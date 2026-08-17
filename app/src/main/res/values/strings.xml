@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">ReplyFloat AI</string>
+    <string name="accessibility_service_description">Analyzes incoming messaging screen text to provide context-aware, instant AI reply suggestions in the floating bar.</string>
+    <string name="accessibility_service_summary">ReplyFloat AI on-screen conversation analysis</string>
+    <string name="channel_overlay_service_name">ReplyFloat AI Floating Assistant</string>
+    <string name="channel_overlay_service_desc">Active floating assistant overlay and controls</string>
+    <string name="channel_bullet_alerts_name">ReplyFloat Bullet Notifications</string>
+    <string name="channel_bullet_alerts_desc">New incoming message and reply suggestion notifications</string>
+</resources>
+
