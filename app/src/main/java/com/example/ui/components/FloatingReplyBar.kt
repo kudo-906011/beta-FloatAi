@@ -358,8 +358,7 @@ private fun ExpandedFloatingCard(
             .shadow(
                 elevation = 8.dp,
                 shape = RoundedCornerShape(ReplyFloatDimens.radius3XLarge)
-            )
-            .animateContentSize(animationSpec = spring()),
+            ),
         shape = RoundedCornerShape(ReplyFloatDimens.radius3XLarge),
         color = DarkRedSurfaceElevated,
         border = BorderStroke(1.dp, DarkRedSurfaceBorder)

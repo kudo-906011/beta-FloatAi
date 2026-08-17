@@ -38,7 +38,22 @@ class ReplyAccessibilityService : AccessibilityService() {
         private val IGNORED_TEXT_EXACT = setOf(
             "send", "reply", "back", "cancel", "search", "more", "options", "done",
             "type a message", "message", "chat", "voice message", "call", "video call",
-            "online", "typing...", "unread messages", "today", "yesterday"
+            "online", "typing...", "unread messages", "today", "yesterday", "home",
+            "new tab", "tabs", "search or type url", "bookmarks", "history", "downloads",
+            "settings", "reload", "share", "close tab", "switch tab", "menu", "open",
+            "close", "save", "delete", "edit", "copy", "cut", "paste", "select all"
+        )
+
+        private val IGNORED_CLASS_NAMES = setOf(
+            "android.widget.button",
+            "android.widget.imagebutton",
+            "android.widget.tabwidget",
+            "android.widget.seekbar",
+            "android.widget.progressbar",
+            "android.widget.switch",
+            "android.widget.radiobutton",
+            "android.widget.checkbox",
+            "android.widget.edittext"
         )
     }
 
@@ -54,12 +69,11 @@ class ReplyAccessibilityService : AccessibilityService() {
 
         val info = serviceInfo ?: AccessibilityServiceInfo()
         info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-        info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-            AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
-        info.notificationTimeout = 300
+        info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+        info.notificationTimeout = 400
         serviceInfo = info
     }
 
@@ -74,14 +88,14 @@ class ReplyAccessibilityService : AccessibilityService() {
         // Skip events from our own app to avoid feedback loops
         if (pkgName == packageName) return
 
-        // Skip system keyboards and launcher UI
+        // Skip system keyboards, launcher UI, and system bars
         if (IGNORED_PACKAGES.contains(pkgName)) return
 
         // Process only relevant event types
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 scheduleScreenAnalysis(pkgName)
             }
         }
@@ -94,7 +108,7 @@ class ReplyAccessibilityService : AccessibilityService() {
     private fun scheduleScreenAnalysis(packageName: String) {
         analysisDebounceJob?.cancel()
         analysisDebounceJob = serviceScope.launch {
-            delay(400) // 400ms debounce window
+            delay(500) // 500ms debounce window
             extractAndProcessLatestMessage(packageName)
         }
     }
@@ -113,8 +127,8 @@ class ReplyAccessibilityService : AccessibilityService() {
             val cleanText = candidate.text.trim()
             val now = System.currentTimeMillis()
 
-            // Deduplication: Avoid re-triggering for identical text within 2 seconds
-            if (cleanText.equals(lastExtractedText, ignoreCase = true) && (now - lastExtractedTime) < 2000) {
+            // Deduplication: Avoid re-triggering for identical text within 3 seconds
+            if (cleanText.equals(lastExtractedText, ignoreCase = true) && (now - lastExtractedTime) < 3000) {
                 return
             }
 
@@ -164,27 +178,54 @@ class ReplyAccessibilityService : AccessibilityService() {
             else -> null
         }
 
-        if (!candidateText.isNullOrBlank() && isValidMessageText(candidateText)) {
-            val isLikelyEditText = className.contains("edittext") || viewId.contains("input") || viewId.contains("entry")
+        val isIgnoredClass = IGNORED_CLASS_NAMES.any { className.contains(it) }
+
+        if (!candidateText.isNullOrBlank() && !isIgnoredClass && isValidMessageText(candidateText)) {
             val isLikelyTimestamp = candidateText.matches(Regex("^[0-9]{1,2}:[0-9]{2}(\\s?[AaPp][Mm])?$"))
+            val isLikelyUrl = candidateText.contains("http://") || candidateText.contains("https://") ||
+                candidateText.contains("www.") || candidateText.endsWith(".com") || candidateText.endsWith(".org")
 
-            if (!isLikelyEditText && !isLikelyTimestamp) {
-                var confidence = 0.5f
-                if (viewId.contains("message") || viewId.contains("text") || viewId.contains("body") || viewId.contains("msg")) {
-                    confidence += 0.3f
-                }
-                if (candidateText.contains("?") || candidateText.length > 20) {
-                    confidence += 0.2f
+            if (!isLikelyTimestamp && !isLikelyUrl) {
+                var confidence = 0.0f
+                val lower = candidateText.lowercase()
+
+                // Chat view ID signals
+                if (viewId.contains("message") || viewId.contains("chat") || viewId.contains("msg") ||
+                    viewId.contains("body") || viewId.contains("conversation") || viewId.contains("bubble")
+                ) {
+                    confidence += 0.45f
                 }
 
-                results.add(
-                    NodeTextData(
-                        text = candidateText,
-                        viewId = viewId,
-                        depth = depth,
-                        confidence = confidence.coerceIn(0.1f, 1.0f)
-                    )
+                // Question signal
+                if (candidateText.contains("?")) {
+                    confidence += 0.35f
+                }
+
+                // Conversational keywords / starters
+                val conversationalPhrases = listOf(
+                    "hey", "hello", "hi ", "can you", "what", "where", "how", "when", "why", "who",
+                    "are you", "will you", "could you", "would you", "is it", "let's", "do you", "thank",
+                    "please", "sure", "sounds good", "free", "meet", "lunch", "sync", "time", "call"
                 )
+                if (conversationalPhrases.any { lower.contains(it) }) {
+                    confidence += 0.30f
+                }
+
+                // Sentence length signal
+                if (candidateText.length >= 15 && candidateText.contains(" ")) {
+                    confidence += 0.15f
+                }
+
+                if (confidence >= 0.45f) {
+                    results.add(
+                        NodeTextData(
+                            text = candidateText,
+                            viewId = viewId,
+                            depth = depth,
+                            confidence = confidence.coerceIn(0.1f, 1.0f)
+                        )
+                    )
+                }
             }
         }
 
@@ -201,20 +242,22 @@ class ReplyAccessibilityService : AccessibilityService() {
     private fun isValidMessageText(text: String): Boolean {
         val trimmed = text.trim()
         if (trimmed.length < 3) return false
-        if (IGNORED_TEXT_EXACT.contains(trimmed.lowercase())) return false
-        // Exclude pure numbers / icons
-        if (trimmed.matches(Regex("^[0-9.,:;+]+$"))) return false
+        val lower = trimmed.lowercase()
+        if (IGNORED_TEXT_EXACT.contains(lower)) return false
+        if (lower.startsWith("tab ") || lower.contains("new tab") || lower.contains("close tab")) return false
+        // Exclude pure numbers / symbols
+        if (trimmed.matches(Regex("^[0-9.,:;+\\-*/%#@!$&()]+$"))) return false
         return true
     }
 
     private fun findBestCandidateMessage(nodes: List<NodeTextData>): NodeTextData? {
         if (nodes.isEmpty()) return null
 
-        // In most chat apps, latest incoming messages appear near the bottom or have high message viewId relevance
-        return nodes
-            .filter { it.confidence >= 0.5f }
-            .maxByOrNull { it.confidence * 2f + it.depth }
-            ?: nodes.lastOrNull()
+        // Require minimum confidence of 0.45 so random UI elements don't trigger
+        val highConfidenceNodes = nodes.filter { it.confidence >= 0.45f }
+        if (highConfidenceNodes.isEmpty()) return null
+
+        return highConfidenceNodes.maxByOrNull { it.confidence * 2f + it.depth }
     }
 
     private fun getAppLabel(packageName: String): String {

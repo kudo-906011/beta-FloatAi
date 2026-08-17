@@ -448,7 +448,7 @@ object OverlayStateManager {
                         replies = result.suggestions,
                         activeGenerationId = generationId,
                         isFloatingBarVisible = true,
-                        isFloatingBarMinimized = false,
+                        isFloatingBarMinimized = state.isFloatingBarMinimized,
                         userNotice = "New replies ready from ${message.sourceApp} (${AiBotManager.getActiveBot().name})"
                     )
                 }
@@ -569,7 +569,7 @@ object OverlayStateManager {
                         replies = result.suggestions,
                         activeGenerationId = generationId,
                         isFloatingBarVisible = true,
-                        isFloatingBarMinimized = false,
+                        isFloatingBarMinimized = it.isFloatingBarMinimized,
                         userNotice = "Analysis complete: ${result.suggestions.size} replies ready (${AiBotManager.getActiveBot().name})."
                     )
                 }
