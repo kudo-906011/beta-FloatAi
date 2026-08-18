@@ -51,13 +51,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AnalysisStatus
 import com.example.model.PassThroughState
+import com.example.model.ReplySuggestion
 import com.example.model.ReplyTone
+import com.example.model.ResponseMode
 import com.example.model.SampleMessageScenario
 import com.example.ui.components.AnalyzeScreenControl
 import com.example.ui.components.BulletNotificationIndicator
 import com.example.ui.components.FloatingReplyBar
 import com.example.ui.components.PassThroughControl
 import com.example.ui.viewmodel.ReplyFloatUiState
+import com.example.ui.viewmodel.SimulationState
 import com.example.ui.viewmodel.sampleScenarios
 import com.example.ui.theme.BrandRed
 import com.example.ui.theme.BrandRedBorder
@@ -81,17 +84,24 @@ import com.example.ui.theme.TextTertiary
 @Composable
 fun MainAssistantScreen(
     state: ReplyFloatUiState,
+    simulationState: SimulationState,
     onToggleOverlay: () -> Unit,
     onTriggerAnalyze: () -> Unit,
-    onCopyReply: (android.content.Context, com.example.model.ReplySuggestion) -> Unit,
-    onToggleViewAll: () -> Unit,
-    onSelectToneFilter: (ReplyTone?) -> Unit,
     onTogglePassThrough: () -> Unit,
     onSetPassThrough: (PassThroughState) -> Unit,
-    onMinimizeFloatingBar: () -> Unit,
-    onExpandFloatingBar: () -> Unit,
-    onToggleFloatingBarVisibility: () -> Unit,
-    onLoadScenario: (SampleMessageScenario) -> Unit,
+    onSelectScenario: (SampleMessageScenario) -> Unit,
+    onSimulationReplyCopy: (android.content.Context, ReplySuggestion) -> Unit,
+    onSimulationViewAllToggle: () -> Unit,
+    onSimulationToneFilterSelect: (ReplyTone?) -> Unit,
+    onSimulationPassThroughToggle: () -> Unit,
+    onSimulationScreenAnalysisToggle: () -> Unit,
+    onSimulationResponseModeSelect: (ResponseMode) -> Unit,
+    onSimulationMinimizeClick: () -> Unit,
+    onSimulationExpandClick: () -> Unit,
+    onSimulationCloseClick: () -> Unit,
+    onSimulationRestoreClick: () -> Unit,
+    onSimulationLanguageBarToggle: () -> Unit = {},
+    onSimulationCopyText: (android.content.Context, String, String) -> Unit = { _, _, _ -> },
     onClearNotice: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -107,7 +117,7 @@ fun MainAssistantScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(ReplyFloatDimens.space16)
     ) {
-        // App Branding Header
+        // App Branding Header with Real Overlay Status
         HeaderSection(
             isOverlayActive = state.isOverlayActive,
             assistantStatus = state.assistantStatus,
@@ -115,37 +125,41 @@ fun MainAssistantScreen(
             onToggleOverlay = onToggleOverlay
         )
 
-        // Live Floating Assistant Interactive Preview Canvas
+        // Live Floating Assistant Interactive Preview Canvas (Strictly Simulation State)
         InteractiveFloatingPreviewSection(
-            state = state,
-            onReplyCopy = { onCopyReply(context, it) },
-            onViewAllToggle = onToggleViewAll,
-            onToneFilterSelect = onSelectToneFilter,
-            onPassThroughToggle = onTogglePassThrough,
-            onMinimizeClick = onMinimizeFloatingBar,
-            onExpandClick = onExpandFloatingBar,
-            onCloseClick = onToggleFloatingBarVisibility,
-            onRestoreClick = onToggleFloatingBarVisibility
+            simulationState = simulationState,
+            onReplyCopy = { onSimulationReplyCopy(context, it) },
+            onViewAllToggle = onSimulationViewAllToggle,
+            onToneFilterSelect = onSimulationToneFilterSelect,
+            onPassThroughToggle = onSimulationPassThroughToggle,
+            onScreenAnalysisToggle = onSimulationScreenAnalysisToggle,
+            onResponseModeSelect = onSimulationResponseModeSelect,
+            onLanguageBarToggle = onSimulationLanguageBarToggle,
+            onCopyText = { text, label -> onSimulationCopyText(context, text, label) },
+            onMinimizeClick = onSimulationMinimizeClick,
+            onExpandClick = onSimulationExpandClick,
+            onCloseClick = onSimulationCloseClick,
+            onRestoreClick = onSimulationRestoreClick
         )
 
-        // Analyze Screen Control Card
+        // Analyze Screen Control Card (Production Trigger)
         AnalyzeScreenControl(
             status = state.analysisStatus,
             replyCount = state.totalReplyCount,
             onAnalyzeClick = onTriggerAnalyze
         )
 
-        // Pass-Through Mode Control Card
+        // Pass-Through Mode Control Card (Production)
         PassThroughControl(
             passThroughState = state.passThroughState,
             onToggle = onTogglePassThrough,
             onSetState = onSetPassThrough
         )
 
-        // UI Test Scenarios
+        // UI Test Scenarios (Preview / Simulation Only)
         ScenarioTestSection(
-            currentDetectedMessage = state.detectedMessage,
-            onSelectScenario = onLoadScenario
+            currentDetectedMessage = simulationState.detectedMessage,
+            onSelectScenario = onSelectScenario
         )
 
         Spacer(modifier = Modifier.height(ReplyFloatDimens.space24))
@@ -265,11 +279,15 @@ private fun HeaderSection(
 
 @Composable
 private fun InteractiveFloatingPreviewSection(
-    state: ReplyFloatUiState,
+    simulationState: SimulationState,
     onReplyCopy: (com.example.model.ReplySuggestion) -> Unit,
     onViewAllToggle: () -> Unit,
     onToneFilterSelect: (ReplyTone?) -> Unit,
     onPassThroughToggle: () -> Unit,
+    onScreenAnalysisToggle: () -> Unit,
+    onResponseModeSelect: (ResponseMode) -> Unit,
+    onLanguageBarToggle: () -> Unit,
+    onCopyText: (String, String) -> Unit,
     onMinimizeClick: () -> Unit,
     onExpandClick: () -> Unit,
     onCloseClick: () -> Unit,
@@ -307,7 +325,7 @@ private fun InteractiveFloatingPreviewSection(
                         )
                     )
                     Text(
-                        text = "Live preview of floating bar over active screen",
+                        text = "Live preview of floating bar over simulated screen",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = TextSecondary,
                             fontSize = 11.sp
@@ -315,7 +333,7 @@ private fun InteractiveFloatingPreviewSection(
                     )
                 }
 
-                if (!state.isFloatingBarVisible) {
+                if (!simulationState.isVisible) {
                     OutlinedButton(
                         onClick = onRestoreClick,
                         modifier = Modifier.testTag("restore_floating_bar_button"),
@@ -349,36 +367,34 @@ private fun InteractiveFloatingPreviewSection(
                         .padding(ReplyFloatDimens.space12),
                     contentAlignment = Alignment.TopCenter
                 ) {
-                    if (state.isFloatingBarVisible) {
+                    if (simulationState.isVisible) {
                         FloatingReplyBar(
-                            status = state.assistantStatus,
-                            detectedMessage = state.detectedMessage,
-                            detectedSender = state.detectedSender,
-                            detectedSourceApp = state.detectedSourceApp,
-                            replies = state.replies,
-                            visibleReplies = state.visibleReplies,
-                            totalReplyCount = state.totalReplyCount,
-                            isExpanded = state.isViewAllExpanded,
-                            isMinimized = state.isFloatingBarMinimized,
-                            passThroughState = state.passThroughState,
-                            activeToneFilter = state.activeToneFilter,
-                            lastCopiedId = state.lastCopiedReplyId,
-                            isScreenAnalysisOn = state.settings.isScreenAnalysisOn,
-                            responseMode = state.settings.responseMode,
-                            recentResults = state.recentResults,
+                            status = if (simulationState.replies.isEmpty()) com.example.model.AssistantStatus.IDLE else com.example.model.AssistantStatus.READY,
+                            detectedMessage = simulationState.detectedMessage,
+                            detectedSender = simulationState.detectedSender,
+                            detectedSourceApp = simulationState.detectedSourceApp,
+                            replies = simulationState.replies,
+                            visibleReplies = simulationState.visibleReplies,
+                            totalReplyCount = simulationState.totalReplyCount,
+                            isExpanded = simulationState.isViewAllExpanded,
+                            isMinimized = simulationState.isMinimized,
+                            passThroughState = simulationState.passThroughState,
+                            activeToneFilter = simulationState.activeToneFilter,
+                            lastCopiedId = simulationState.lastCopiedId,
+                            isScreenAnalysisOn = simulationState.isScreenAnalysisOn,
+                            responseMode = simulationState.responseMode,
+                            recentResults = emptyList(),
+                            isLanguageBarActive = simulationState.isLanguageBarActive,
+                            languageData = simulationState.languageData,
                             onReplyCopy = onReplyCopy,
                             onViewAllToggle = onViewAllToggle,
                             onToneFilterSelect = onToneFilterSelect,
                             onPassThroughToggle = onPassThroughToggle,
-                            onScreenAnalysisToggle = {
-                                com.example.data.OverlayStateManager.toggleScreenAnalysis(null)
-                            },
-                            onResponseModeSelect = { mode ->
-                                com.example.data.OverlayStateManager.selectResponseMode(mode, null)
-                            },
-                            onDeleteRecentResult = { id ->
-                                com.example.data.OverlayStateManager.deleteRecentResult(id)
-                            },
+                            onScreenAnalysisToggle = onScreenAnalysisToggle,
+                            onResponseModeSelect = onResponseModeSelect,
+                            onDeleteRecentResult = {},
+                            onLanguageBarToggle = onLanguageBarToggle,
+                            onCopyText = onCopyText,
                             onMinimizeClick = onMinimizeClick,
                             onExpandClick = onExpandClick,
                             onCloseClick = onCloseClick
@@ -392,7 +408,7 @@ private fun InteractiveFloatingPreviewSection(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "Floating bar is currently dismissed",
+                                text = "Floating preview is currently dismissed",
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontWeight = FontWeight.Medium,
                                     color = TextSecondary

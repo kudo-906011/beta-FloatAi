@@ -38,9 +38,12 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LayersClear
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.HorizontalDivider
@@ -70,6 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AssistantStatus
+import com.example.model.LanguageCardData
 import com.example.model.PassThroughState
 import com.example.model.RecentResultItem
 import com.example.model.ReplySuggestion
@@ -116,6 +120,8 @@ fun FloatingReplyBar(
     isScreenAnalysisOn: Boolean = true,
     responseMode: ResponseMode = ResponseMode.PASSIVE,
     recentResults: List<RecentResultItem> = emptyList(),
+    isLanguageBarActive: Boolean = false,
+    languageData: LanguageCardData = LanguageCardData(),
     onReplyCopy: (ReplySuggestion) -> Unit,
     onViewAllToggle: () -> Unit,
     onToneFilterSelect: (ReplyTone?) -> Unit,
@@ -123,6 +129,8 @@ fun FloatingReplyBar(
     onScreenAnalysisToggle: () -> Unit = {},
     onResponseModeSelect: (ResponseMode) -> Unit = {},
     onDeleteRecentResult: (String) -> Unit = {},
+    onLanguageBarToggle: () -> Unit = {},
+    onCopyText: (String, String) -> Unit = { _, _ -> },
     onMinimizeClick: () -> Unit,
     onExpandClick: () -> Unit,
     onCloseClick: () -> Unit,
@@ -146,6 +154,19 @@ fun FloatingReplyBar(
                 onClick = onExpandClick,
                 onClose = onCloseClick,
                 onDrag = onDrag
+            )
+        } else if (isLanguageBarActive) {
+            // Third Floating Bar: Multilingual Translation Card (Bar 3)
+            LanguageFloatingCard(
+                status = status,
+                languageData = languageData,
+                passThroughState = passThroughState,
+                onLanguageBarToggle = onLanguageBarToggle,
+                onCopyText = onCopyText,
+                onMinimizeClick = onMinimizeClick,
+                onCloseClick = onCloseClick,
+                onDrag = onDrag,
+                onResize = onResize
             )
         } else {
             // Full Floating Assistant Card (Bar 2)
@@ -171,6 +192,7 @@ fun FloatingReplyBar(
                 onScreenAnalysisToggle = onScreenAnalysisToggle,
                 onResponseModeSelect = onResponseModeSelect,
                 onDeleteRecentResult = onDeleteRecentResult,
+                onLanguageBarToggle = onLanguageBarToggle,
                 onMinimizeClick = onMinimizeClick,
                 onCloseClick = onCloseClick,
                 onDrag = onDrag,
@@ -344,6 +366,7 @@ private fun ExpandedFloatingCard(
     onScreenAnalysisToggle: () -> Unit,
     onResponseModeSelect: (ResponseMode) -> Unit,
     onDeleteRecentResult: (String) -> Unit,
+    onLanguageBarToggle: () -> Unit = {},
     onMinimizeClick: () -> Unit,
     onCloseClick: () -> Unit,
     onDrag: ((Float, Float) -> Unit)? = null,
@@ -470,6 +493,39 @@ private fun ExpandedFloatingCard(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 9.sp,
                                     color = if (isScreenAnalysisOn) BrandRedText else TextTertiary
+                                )
+                            )
+                        }
+                    }
+
+                    // LANG button in right-side corner of Bar 2 (Opens Bar 3)
+                    Surface(
+                        shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+                        color = BrandRedSurface,
+                        border = BorderStroke(1.dp, BrandRedBorder),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(ReplyFloatDimens.radiusPill))
+                            .clickable(onClick = onLanguageBarToggle)
+                            .testTag("floating_bar_lang_button")
+                            .semantics { contentDescription = "Open multilingual translation bar" }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Translate,
+                                contentDescription = null,
+                                tint = BrandRedText,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "LANG",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 10.sp,
+                                    color = BrandRedText
                                 )
                             )
                         }
@@ -857,7 +913,7 @@ private fun ExpandedFloatingCard(
                                 modifier = Modifier.size(13.dp)
                             )
                             Text(
-                                text = if (passThroughState == PassThroughState.ENABLED) "PASS-THRU ON" else "TOUCH ON",
+                                text = if (passThroughState == PassThroughState.ENABLED) "PASS THROUGH ON" else "TOUCH ON",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 9.sp,
@@ -1006,3 +1062,514 @@ private fun TonePill(
         )
     }
 }
+
+/**
+ * Third Floating Bar (Bar 3) - Multilingual Translation and Reply Card
+ * Opens when the user clicks the "LANG" button on Bar 2.
+ * Displays:
+ * 1. Original Message in detected language (Bengali, Hinglish, Russian, Hindi, etc.)
+ * 2. English Translation / Interpretation
+ * 3. AI Reply generated in the Original Language
+ * Includes independent copy actions, quick-action footer, and return button to Bar 2.
+ */
+@Composable
+private fun LanguageFloatingCard(
+    status: AssistantStatus,
+    languageData: LanguageCardData,
+    passThroughState: PassThroughState,
+    onLanguageBarToggle: () -> Unit,
+    onCopyText: (String, String) -> Unit,
+    onMinimizeClick: () -> Unit,
+    onCloseClick: () -> Unit,
+    onDrag: ((Float, Float) -> Unit)? = null,
+    onResize: ((Float, Float) -> Unit)? = null
+) {
+    val scrollState = rememberScrollState()
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("floating_language_card")
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(ReplyFloatDimens.radius3XLarge)
+            ),
+        shape = RoundedCornerShape(ReplyFloatDimens.radius3XLarge),
+        color = DarkRedSurfaceElevated,
+        border = BorderStroke(1.dp, DarkRedSurfaceBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(ReplyFloatDimens.space14)
+        ) {
+            // Dedicated Top Drag Handle Pill
+            if (onDrag != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp)
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                onDrag(dragAmount.x, dragAmount.y)
+                            }
+                        }
+                        .testTag("language_card_drag_handle"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(42.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(ReplyFloatDimens.radiusPill))
+                            .background(DarkRedSurfaceBorder)
+                    )
+                }
+            }
+
+            // Top Header: Multilingual Badge & Window Controls
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(ReplyFloatDimens.radiusSmall))
+                            .background(BrandRed),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Translate,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+
+                    Column {
+                        Text(
+                            text = "ReplyFloat Language",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = (-0.3).sp,
+                                color = TextPrimary
+                            )
+                        )
+                    }
+
+                    // Detected Language Pill Tag
+                    Surface(
+                        shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+                        color = StatusSuccessBg,
+                        border = BorderStroke(1.dp, StatusSuccessBorder),
+                        modifier = Modifier.clip(RoundedCornerShape(ReplyFloatDimens.radiusPill))
+                    ) {
+                        Text(
+                            text = languageData.detectedLanguage.uppercase(),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 9.sp,
+                                color = StatusSuccess
+                            ),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Active LANG Toggle Button (Clicking returns to Bar 2)
+                    Surface(
+                        shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+                        color = BrandRed,
+                        border = BorderStroke(1.dp, BrandRedLight),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(ReplyFloatDimens.radiusPill))
+                            .clickable(onClick = onLanguageBarToggle)
+                            .testTag("language_bar_lang_toggle")
+                            .semantics { contentDescription = "Return to main response bar" }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Translate,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "LANG",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 10.sp,
+                                    color = Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    // Minimize Button
+                    Surface(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onMinimizeClick)
+                            .testTag("minimize_language_card_button")
+                            .semantics { contentDescription = "Minimize to floating bubble" },
+                        shape = CircleShape,
+                        color = DarkRedSurfaceHover
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Remove,
+                                contentDescription = null,
+                                tint = TextSecondary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
+                    // Close Button
+                    Surface(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onCloseClick)
+                            .testTag("close_language_card_button")
+                            .semantics { contentDescription = "Close floating bar" },
+                        shape = CircleShape,
+                        color = DarkRedSurfaceHover
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = null,
+                                tint = TextSecondary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 3-Block Multilingual Content
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 280.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Block 1: Original Message in Detected Language
+                LanguageContentSection(
+                    label = "ORIGINAL MESSAGE (${languageData.detectedLanguage.uppercase()})",
+                    content = languageData.originalMessage.ifBlank { "No active message detected" },
+                    badgeColor = StatusWarning,
+                    onCopy = { onCopyText(languageData.originalMessage, "Original Message") },
+                    testTag = "language_card_original_message"
+                )
+
+                // Block 2: English Translation / Interpretation
+                LanguageContentSection(
+                    label = if (languageData.isHinglish) "ENGLISH INTERPRETATION" else "ENGLISH TRANSLATION",
+                    content = languageData.englishTranslation.ifBlank { "Translating detected message to English..." },
+                    badgeColor = BrandRedText,
+                    onCopy = { onCopyText(languageData.englishTranslation, "English Translation") },
+                    testTag = "language_card_english_translation"
+                )
+
+                // Block 3: Reply in Original Language
+                LanguageContentSection(
+                    label = if (languageData.isHinglish) "ENGLISH REPLY" else "REPLY IN ${languageData.detectedLanguage.uppercase()}",
+                    content = languageData.originalLanguageReply.ifBlank { "Synthesizing original language response..." },
+                    badgeColor = StatusSuccess,
+                    onCopy = { onCopyText(languageData.originalLanguageReply, "Original Language Reply") },
+                    testTag = "language_card_language_reply"
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Bottom Action Footer
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Copy Reply Button
+                    Surface(
+                        shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+                        color = BrandRed,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(ReplyFloatDimens.radiusPill))
+                            .clickable {
+                                onCopyText(languageData.originalLanguageReply, "Reply")
+                            }
+                            .testTag("lang_card_copy_reply_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "COPY REPLY",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    color = Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    // Copy All Button
+                    Surface(
+                        shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+                        color = DarkRedSurfaceCard,
+                        border = BorderStroke(1.dp, DarkRedSurfaceBorder),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(ReplyFloatDimens.radiusPill))
+                            .clickable {
+                                val fullText = "Original (${languageData.detectedLanguage}): ${languageData.originalMessage}\nEnglish: ${languageData.englishTranslation}\nReply: ${languageData.originalLanguageReply}"
+                                onCopyText(fullText, "Full Multilingual Reply")
+                            }
+                            .testTag("lang_card_copy_all_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                tint = TextSecondary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(
+                                text = "COPY ALL",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    color = TextSecondary
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Return to Bar 2 Button
+                TextButton(
+                    onClick = onLanguageBarToggle,
+                    modifier = Modifier.testTag("lang_card_back_to_bar2_button"),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "Back to Bar 2",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = BrandRedText,
+                            fontSize = 11.sp
+                        )
+                    )
+                }
+            }
+
+            // Resize handle corner
+            if (onResize != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FitScreen,
+                        contentDescription = "Resize window handle",
+                        tint = TextTertiary,
+                        modifier = Modifier
+                            .size(14.dp)
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    onResize(dragAmount.x, dragAmount.y)
+                                }
+                            }
+                            .testTag("language_card_resize_handle")
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LanguageContentSection(
+    label: String,
+    content: String,
+    badgeColor: Color,
+    onCopy: () -> Unit,
+    testTag: String
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag),
+        shape = RoundedCornerShape(ReplyFloatDimens.radiusMedium),
+        color = DarkRedSurfaceCard,
+        border = BorderStroke(1.dp, DarkRedSurfaceBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 9.sp,
+                        color = badgeColor,
+                        letterSpacing = 0.4.sp
+                    )
+                )
+                IconButton(
+                    onClick = onCopy,
+                    modifier = Modifier.size(20.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy $label",
+                        tint = TextTertiary,
+                        modifier = Modifier.size(11.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = content,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.sp,
+                    color = TextPrimary,
+                    lineHeight = 16.sp
+                ),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+// =========================================================================
+// Floating Pass-Through Recovery Controller Pill
+// When Pass Through is active, this pill remains 100% touchable and floating
+// so the user can easily tap it to disable pass-through and restore full touch control.
+// =========================================================================
+
+@Composable
+fun FloatingPassThroughRecoveryPill(
+    onDisablePassThrough: () -> Unit,
+    onDrag: ((Float, Float) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .testTag("floating_passthrough_recovery_pill")
+            .shadow(12.dp, RoundedCornerShape(ReplyFloatDimens.radiusPill))
+            .then(
+                if (onDrag != null) {
+                    Modifier.pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            onDrag(dragAmount.x, dragAmount.y)
+                        }
+                    }
+                } else Modifier
+            ),
+        shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+        color = Color(0xFF2C1014),
+        border = BorderStroke(1.5.dp, StatusWarningLight)
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(ReplyFloatDimens.radiusPill))
+                .clickable(onClick = onDisablePassThrough)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(StatusWarning),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.TouchApp,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "PASS THROUGH ON",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.sp,
+                            color = StatusWarningLight,
+                            letterSpacing = 0.4.sp
+                        )
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(StatusWarningLight)
+                    )
+                }
+                Text(
+                    text = "Tap to Disable • Restore Touch",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 9.sp,
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                )
+            }
+        }
+    }
+}
+

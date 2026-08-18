@@ -98,6 +98,18 @@ data class ActiveReplyItem(
     val responseMode: ResponseMode = ResponseMode.PASSIVE
 )
 
+data class LanguageCardData(
+    val generationId: String = "",
+    val detectedLanguage: String = "English",
+    val languageCode: String = "en",
+    val originalMessage: String = "",
+    val englishTranslation: String = "",
+    val originalLanguageReply: String = "",
+    val englishReply: String = "",
+    val isHinglish: Boolean = false,
+    val isLoading: Boolean = false
+)
+
 data class DetectedMessage(
     val eventId: String,
     val text: String,
@@ -166,6 +178,28 @@ enum class BotProviderType(
     LOCAL_ENGINE("local_engine", "ReplyFloat Local Engine", "on-device-v1", "Ultra-low-latency on-device semantic heuristics & pattern engine")
 }
 
+enum class UiColorPreset(
+    val title: String,
+    val primaryHex: Long,
+    val darkHex: Long,
+    val lightHex: Long,
+    val surfaceHex: Long,
+    val borderHex: Long,
+    val textHex: Long
+) {
+    DARK_RED("Dark Red", 0xFF7A0F16L, 0xFF52090EL, 0xFFA51D26L, 0xFF2E0F12L, 0xFF521419L, 0xFFFFD6DAL),
+    RED("Red", 0xFFD32F2FL, 0xFF8E0000L, 0xFFEF5350L, 0xFF3E1214L, 0xFF6B1D22L, 0xFFFFCDD2L),
+    BLUE("Blue", 0xFF1E88E5L, 0xFF0D47A1L, 0xFF42A5F5L, 0xFF0E2238L, 0xFF15436EL, 0xFFBBDEFBL),
+    PURPLE("Purple", 0xFF8E24AAL, 0xFF4A148CL, 0xFFAB47BCL, 0xFF26102EL, 0xFF4F1E5CL, 0xFFE1BEE7L),
+    GREEN("Green", 0xFF43A047L, 0xFF1B5E20L, 0xFF66BB6AL, 0xFF112914L, 0xFF215428L, 0xFFC8E6C9L),
+    ORANGE("Orange", 0xFFFB8C00L, 0xFFE65100L, 0xFFFFA726L, 0xFF382008L, 0xFF663B10L, 0xFFFFE0B2L),
+    CYAN("Cyan", 0xFF00ACC1L, 0xFF006064L, 0xFF26C6DAL, 0xFF08262BL, 0xFF104C54L, 0xFFB2EBF2L),
+    PINK("Pink", 0xFFD81B60L, 0xFF880E4FL, 0xFFEC407AL, 0xFF330E1BL, 0xFF611933L, 0xFFF8BBD0L),
+    CUSTOM("Custom", 0xFF7A0F16L, 0xFF52090EL, 0xFFA51D26L, 0xFF2E0F12L, 0xFF521419L, 0xFFFFD6DAL);
+
+    val label: String get() = title
+}
+
 data class AppSettings(
     val overlayPermissionGranted: Boolean = false,
     val accessibilityPermissionGranted: Boolean = false,
@@ -185,7 +219,10 @@ data class AppSettings(
     val latencyMode: AiLatencyMode = AiLatencyMode.BALANCED,
     val customDebounceMs: Long = 500L,
     val customTimeoutSeconds: Int = 10,
-    val activeBotId: String = "bot_gemini_flash"
+    val activeBotId: String = "bot_gemini_flash",
+    val uiColorPreset: UiColorPreset = UiColorPreset.DARK_RED,
+    val customUiColorHex: Long = 0xFF7A0F16L,
+    val overlayOpacity: Float = 0.98f
 ) {
     val customRecentRetentionMinutes: Int get() = (customRecentRetentionSeconds / 60).coerceAtLeast(1)
 }

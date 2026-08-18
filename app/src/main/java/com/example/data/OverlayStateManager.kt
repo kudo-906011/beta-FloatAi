@@ -2,6 +2,7 @@ package com.example.data
 
 import android.content.Context
 import com.example.ai.AiBotManager
+import com.example.ai.LanguageDetectionEngine
 import com.example.model.AiLatencyMode
 import com.example.model.AiReplyRequest
 import com.example.model.AnalysisStatus
@@ -12,16 +13,14 @@ import com.example.model.ConversationMessage
 import com.example.model.ConversationRole
 import com.example.model.DetectedMessage
 import com.example.model.HistoryEntry
+import com.example.model.LanguageCardData
 import com.example.model.PassThroughState
 import com.example.model.PurgeDuration
 import com.example.model.ReplySuggestion
 import com.example.model.ReplyTone
-import com.example.model.SampleMessageScenario
 import com.example.model.ScreenContext
 import com.example.ui.viewmodel.NavigationTab
 import com.example.ui.viewmodel.ReplyFloatUiState
-import com.example.ui.viewmodel.defaultSampleHistory
-import com.example.ui.viewmodel.defaultSampleReplies
 import com.example.util.PermissionUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,8 +40,10 @@ import java.util.UUID
  * across Activity UI, WindowManager Floating Overlay Service, Accessibility Service,
  * Notification Quick Actions, Auto-Purge Timer, and Multi-Bot Router.
  *
- * Implements strict generation-ID lifecycle tracking, stale response discard,
- * safe bot switching, auto-purge monitoring, and configurable latency response behavior.
+ * Implements strict production runtime state management:
+ * - Starts completely CLEAN with zero simulation/demo text or mock suggestions.
+ * - Discards stale responses via UUID generation tracking.
+ * - Isolates real user history and dynamic AI responses from preview environments.
  */
 object OverlayStateManager {
 
@@ -66,13 +67,14 @@ object OverlayStateManager {
             isFloatingBarVisible = true,
             isFloatingBarMinimized = false,
             passThroughState = PassThroughState.DISABLED,
-            assistantStatus = AssistantStatus.READY,
+            assistantStatus = AssistantStatus.IDLE,
             analysisStatus = AnalysisStatus.READY,
-            detectedMessage = "Hey! Are you still free to review the Q3 product roadmap proposal before our 4 PM sync?",
-            detectedSender = "Sarah Jenkins",
-            detectedSourceApp = "Work Chat",
-            replies = defaultSampleReplies,
-            historyList = defaultSampleHistory
+            detectedMessage = "",
+            detectedSender = "",
+            detectedSourceApp = "",
+            replies = emptyList(),
+            recentResults = emptyList(),
+            historyList = emptyList()
         )
     )
     val state: StateFlow<ReplyFloatUiState> = _state.asStateFlow()
@@ -153,7 +155,9 @@ object OverlayStateManager {
                 detectedSender = "",
                 detectedSourceApp = "",
                 replies = emptyList(),
+                languageData = LanguageCardData(),
                 recentResults = emptyList(),
+                isLanguageBarActive = false,
                 isViewAllExpanded = false,
                 assistantStatus = AssistantStatus.IDLE,
                 analysisStatus = AnalysisStatus.READY,
@@ -257,6 +261,14 @@ object OverlayStateManager {
 
     fun setFloatingBarMinimized(minimized: Boolean) {
         _state.update { it.copy(isFloatingBarMinimized = minimized) }
+    }
+
+    fun toggleLanguageBar() {
+        _state.update { it.copy(isLanguageBarActive = !it.isLanguageBarActive) }
+    }
+
+    fun setLanguageBar(active: Boolean) {
+        _state.update { it.copy(isLanguageBarActive = active) }
     }
 
     fun toggleViewAllExpanded() {
@@ -376,7 +388,7 @@ object OverlayStateManager {
         }
 
         activeGenerationJob = scope.launch {
-            // Immediate state transition: archive old answers into recentResults and reset active replies
+            // Immediate state transition: archive old answers into recentResults and reset active replies & language state
             _state.update { state ->
                 val newRecent = if (previousRecentItem != null) {
                     (listOf(previousRecentItem) + state.recentResults).take(20)
@@ -390,6 +402,11 @@ object OverlayStateManager {
                     detectedSender = message.sender,
                     detectedSourceApp = message.sourceApp,
                     replies = emptyList(),
+                    languageData = LanguageCardData(
+                        generationId = generationId,
+                        originalMessage = cleanText,
+                        isLoading = true
+                    ),
                     recentResults = newRecent,
                     activeGenerationId = generationId,
                     isViewAllExpanded = false,
@@ -433,6 +450,14 @@ object OverlayStateManager {
             }
 
             if (result.isSuccess && result.suggestions.isNotEmpty()) {
+                val bestReply = result.suggestions.firstOrNull()?.text ?: ""
+                val langCard = LanguageDetectionEngine.processLanguageCard(
+                    originalMessage = cleanText,
+                    englishReply = bestReply,
+                    generationId = generationId,
+                    responseMode = current.settings.responseMode
+                )
+
                 addConversationTurn(
                     ConversationMessage(
                         role = ConversationRole.USER,
@@ -446,6 +471,7 @@ object OverlayStateManager {
                         assistantStatus = AssistantStatus.READY,
                         analysisStatus = AnalysisStatus.COMPLETED,
                         replies = result.suggestions,
+                        languageData = langCard,
                         activeGenerationId = generationId,
                         isFloatingBarVisible = true,
                         isFloatingBarMinimized = state.isFloatingBarMinimized,
@@ -458,6 +484,7 @@ object OverlayStateManager {
                         assistantStatus = AssistantStatus.IDLE,
                         analysisStatus = AnalysisStatus.NO_CONTENT,
                         replies = emptyList(),
+                        languageData = LanguageCardData(generationId = generationId, originalMessage = cleanText, isLoading = false),
                         activeGenerationId = generationId,
                         userNotice = result.errorMessage ?: "No relevant replies generated."
                     )
@@ -466,10 +493,10 @@ object OverlayStateManager {
         }
     }
 
-    fun triggerAnalyzeScreen(sampleScenarioText: String? = null, sourceApp: String? = null) {
+    fun triggerAnalyzeScreen(sourceApp: String? = null) {
         lastActivityTimestamp = System.currentTimeMillis()
         val current = _state.value
-        val messageText = (sampleScenarioText ?: current.detectedMessage).trim()
+        val messageText = current.detectedMessage.trim()
 
         val generationId = UUID.randomUUID().toString()
         activeGenerationId = generationId
@@ -506,6 +533,11 @@ object OverlayStateManager {
                     analysisStatus = AnalysisStatus.ANALYZING,
                     assistantStatus = AssistantStatus.ANALYZING,
                     replies = emptyList(),
+                    languageData = LanguageCardData(
+                        generationId = generationId,
+                        originalMessage = messageText,
+                        isLoading = true
+                    ),
                     recentResults = newRecent,
                     activeGenerationId = generationId,
                     userNotice = "Scanning active screen with ${AiBotManager.getActiveBot().name}..."
@@ -521,6 +553,7 @@ object OverlayStateManager {
                             analysisStatus = AnalysisStatus.NO_CONTENT,
                             assistantStatus = AssistantStatus.IDLE,
                             replies = emptyList(),
+                            languageData = LanguageCardData(),
                             userNotice = "No active conversation message found on screen."
                         )
                     }
@@ -553,6 +586,14 @@ object OverlayStateManager {
             }
 
             if (result.isSuccess && result.suggestions.isNotEmpty()) {
+                val bestReply = result.suggestions.firstOrNull()?.text ?: ""
+                val langCard = LanguageDetectionEngine.processLanguageCard(
+                    originalMessage = messageText,
+                    englishReply = bestReply,
+                    generationId = generationId,
+                    responseMode = current.settings.responseMode
+                )
+
                 addConversationTurn(
                     ConversationMessage(
                         role = ConversationRole.USER,
@@ -567,6 +608,7 @@ object OverlayStateManager {
                         assistantStatus = AssistantStatus.READY,
                         detectedMessage = messageText,
                         replies = result.suggestions,
+                        languageData = langCard,
                         activeGenerationId = generationId,
                         isFloatingBarVisible = true,
                         isFloatingBarMinimized = it.isFloatingBarMinimized,
@@ -579,6 +621,7 @@ object OverlayStateManager {
                         analysisStatus = AnalysisStatus.NO_CONTENT,
                         assistantStatus = AssistantStatus.IDLE,
                         replies = emptyList(),
+                        languageData = LanguageCardData(generationId = generationId, originalMessage = messageText, isLoading = false),
                         activeGenerationId = generationId,
                         userNotice = result.errorMessage ?: "No relevant message detected."
                     )
@@ -632,41 +675,22 @@ object OverlayStateManager {
         }
     }
 
+    fun copyText(context: Context, text: String, label: String = "ReplyFloat Content") {
+        lastActivityTimestamp = System.currentTimeMillis()
+        try {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = android.content.ClipData.newPlainText(label, text)
+            clipboard.setPrimaryClip(clip)
+            _state.update { it.copy(userNotice = "Copied to clipboard!") }
+        } catch (e: Exception) {
+            _state.update { it.copy(userNotice = "Copy failed: ${e.message}") }
+        }
+    }
+
     private fun addConversationTurn(message: ConversationMessage) {
         conversationHistory.add(message)
         while (conversationHistory.size > 6) {
             conversationHistory.removeAt(0)
-        }
-    }
-
-    fun loadScenario(scenario: SampleMessageScenario) {
-        lastActivityTimestamp = System.currentTimeMillis()
-        val genId = UUID.randomUUID().toString()
-        activeGenerationId = genId
-        activeGenerationJob?.cancel()
-
-        conversationHistory.clear()
-        conversationHistory.add(
-            ConversationMessage(
-                role = ConversationRole.USER,
-                text = scenario.message,
-                source = scenario.sourceApp
-            )
-        )
-
-        _state.update { current ->
-            current.copy(
-                detectedMessage = scenario.message,
-                detectedSourceApp = scenario.sourceApp,
-                replies = scenario.suggestions,
-                isViewAllExpanded = false,
-                activeToneFilter = null,
-                assistantStatus = if (scenario.suggestions.isEmpty()) AssistantStatus.IDLE else AssistantStatus.READY,
-                analysisStatus = if (scenario.suggestions.isEmpty()) AnalysisStatus.NO_CONTENT else AnalysisStatus.READY,
-                isFloatingBarVisible = true,
-                isFloatingBarMinimized = false,
-                userNotice = "Loaded scenario: ${scenario.title}"
-            )
         }
     }
 
@@ -680,6 +704,10 @@ object OverlayStateManager {
             val updated = current.historyList.filterNot { it.id == id }
             current.copy(historyList = updated, userNotice = "History entry removed")
         }
+    }
+
+    fun notifyUser(message: String) {
+        _state.update { it.copy(userNotice = message) }
     }
 
     fun clearNotice() {

@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.data.OverlayStateManager
 import com.example.ui.navigation.ReplyFloatApp
@@ -16,7 +18,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         OverlayStateManager.refreshPermissions(this)
         setContent {
-            ReplyFloatTheme {
+            val state by com.example.data.OverlayStateManager.state.collectAsState()
+            ReplyFloatTheme(
+                preset = state.settings.uiColorPreset,
+                customHex = state.settings.customUiColorHex,
+                opacity = state.settings.overlayOpacity
+            ) {
                 ReplyFloatApp()
             }
         }

@@ -57,6 +57,7 @@ fun ReplyFloatApp(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val simulationState by viewModel.simulationState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state.userNotice) {
@@ -178,17 +179,24 @@ fun ReplyFloatApp(
                     NavigationTab.ASSISTANT -> {
                         MainAssistantScreen(
                             state = state,
+                            simulationState = simulationState,
                             onToggleOverlay = { viewModel.toggleOverlayService(context) },
+                            onTriggerAnalyze = { viewModel.triggerAnalyzeScreen() },
                             onTogglePassThrough = { viewModel.togglePassThroughMode() },
                             onSetPassThrough = { viewModel.setPassThroughMode(it) },
-                            onTriggerAnalyze = { viewModel.triggerAnalyzeScreen() },
-                            onCopyReply = { ctx, reply -> viewModel.copyReply(ctx, reply) },
-                            onToggleViewAll = { viewModel.toggleViewAllReplies() },
-                            onSelectToneFilter = { viewModel.selectToneFilter(it) },
-                            onMinimizeFloatingBar = { viewModel.toggleMinimizeFloatingBar() },
-                            onExpandFloatingBar = { viewModel.expandFloatingBar() },
-                            onToggleFloatingBarVisibility = { viewModel.toggleFloatingBarVisibility() },
-                            onLoadScenario = { viewModel.loadScenario(it) },
+                            onSelectScenario = { viewModel.selectSimulationScenario(it) },
+                            onSimulationReplyCopy = { ctx, reply -> viewModel.copySimulationReply(ctx, reply) },
+                            onSimulationViewAllToggle = { viewModel.toggleSimulationViewAll() },
+                            onSimulationToneFilterSelect = { viewModel.selectSimulationToneFilter(it) },
+                            onSimulationPassThroughToggle = { viewModel.toggleSimulationPassThrough() },
+                            onSimulationScreenAnalysisToggle = { viewModel.toggleSimulationScreenAnalysis() },
+                            onSimulationResponseModeSelect = { viewModel.selectSimulationResponseMode(it) },
+                            onSimulationMinimizeClick = { viewModel.toggleSimulationMinimize() },
+                            onSimulationExpandClick = { viewModel.expandSimulationBar() },
+                            onSimulationCloseClick = { viewModel.toggleSimulationVisibility() },
+                            onSimulationRestoreClick = { viewModel.toggleSimulationVisibility() },
+                            onSimulationLanguageBarToggle = { viewModel.toggleSimulationLanguageBar() },
+                            onSimulationCopyText = { ctx, text, label -> viewModel.copySimulationText(ctx, text, label) },
                             onClearNotice = { viewModel.clearNotice() }
                         )
                     }

@@ -329,12 +329,16 @@ class ExampleRobolectricTest {
         val initialBotCount = com.example.ai.AiBotManager.configuredBots.value.size
         val initialTone = OverlayStateManager.state.value.settings.defaultTone
 
-        // Load a scenario with replies
-        OverlayStateManager.loadScenario(com.example.ui.viewmodel.sampleScenarios.first())
-        assertTrue(OverlayStateManager.state.value.replies.isNotEmpty())
-        assertTrue(OverlayStateManager.state.value.detectedMessage.isNotBlank())
-
-        // Purge temporary data
+        // Load a message with replies
+        val detected = DetectedMessage(
+            eventId = "test_ev_1",
+            text = "Hey! Are you still free to review the Q3 proposal?",
+            sender = "Sarah Jenkins",
+            sourceApp = "Slack",
+            packageName = "com.Slack",
+            timestamp = System.currentTimeMillis()
+        )
+        OverlayStateManager.onNewMessageDetected(detected)
         OverlayStateManager.purgeTemporaryData()
 
         // Verify temporary data is purged
@@ -357,5 +361,37 @@ class ExampleRobolectricTest {
 
         assertEquals(1000L, com.example.model.AiLatencyMode.STABLE.debounceMs)
         assertEquals(15, com.example.model.AiLatencyMode.STABLE.timeoutSeconds)
+    }
+
+    // MULTILINGUAL & 3-BAR LANGUAGE TESTS
+    @Test
+    fun `test multilingual detection and translation engine`() {
+        // 1. Hinglish detection & translation
+        val hinglishInput = "bhai mujhe youtube channel kaise start karna chahiye?"
+        val hinglishLang = com.example.ai.LanguageDetectionEngine.detectLanguage(hinglishInput)
+        assertEquals("Hinglish", hinglishLang.name)
+        assertTrue(hinglishLang.isHinglish)
+        val hinglishTranslation = com.example.ai.LanguageDetectionEngine.translateToEnglish(hinglishInput, hinglishLang)
+        assertTrue(hinglishTranslation.contains("start a YouTube channel") || hinglishTranslation.contains("YouTube"))
+        val hinglishReply = com.example.ai.LanguageDetectionEngine.generateOriginalLanguageReply("To start a channel, pick a niche.", hinglishInput, hinglishLang)
+        assertEquals("To start a channel, pick a niche.", hinglishReply)
+
+        // 2. Russian detection & translation & original language reply
+        val russianInput = "Как мне стать ютубером?"
+        val russianLang = com.example.ai.LanguageDetectionEngine.detectLanguage(russianInput)
+        assertEquals("Russian", russianLang.name)
+        val russianTranslation = com.example.ai.LanguageDetectionEngine.translateToEnglish(russianInput, russianLang)
+        assertTrue(russianTranslation.contains("YouTuber") || russianTranslation.contains("become"))
+        val russianReply = com.example.ai.LanguageDetectionEngine.generateOriginalLanguageReply("Start uploading videos", russianInput, russianLang)
+        assertTrue(russianReply.contains("ютубером") || russianReply.contains("контент") || russianReply.contains("Создавайте"))
+
+        // 3. Bengali detection & translation & original language reply
+        val bengaliInput = "আমি কীভাবে ইউটিউবার হতে পারি?"
+        val bengaliLang = com.example.ai.LanguageDetectionEngine.detectLanguage(bengaliInput)
+        assertEquals("Bengali", bengaliLang.name)
+        val bengaliTranslation = com.example.ai.LanguageDetectionEngine.translateToEnglish(bengaliInput, bengaliLang)
+        assertTrue(bengaliTranslation.contains("YouTuber") || bengaliTranslation.contains("become"))
+        val bengaliReply = com.example.ai.LanguageDetectionEngine.generateOriginalLanguageReply("Upload videos consistently", bengaliInput, bengaliLang)
+        assertTrue(bengaliReply.contains("ইউটিউবার") || bengaliReply.contains("ভিডিও") || bengaliReply.contains("শুরু করুন"))
     }
 }

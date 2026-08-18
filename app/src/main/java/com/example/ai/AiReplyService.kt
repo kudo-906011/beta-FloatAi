@@ -103,6 +103,35 @@ class DefaultAiReplyService : AiReplyService {
         }
 
         // 2. Specific factual / common questions
+        if (lower.contains("photosynthesis")) {
+            return generateFactReplies(
+                "Photosynthesis is the biological process where plants convert sunlight and carbon dioxide into glucose and oxygen using chlorophyll.",
+                "Photosynthesis",
+                responseMode,
+                preferredTone,
+                requestedCount
+            )
+        }
+        if (lower == "why" || lower == "why?" || lower.startsWith("why is it") || lower.startsWith("why did") || lower.startsWith("why was")) {
+            val lastContext = recentConversation.lastOrNull { it.role == ConversationRole.USER }?.text?.lowercase() ?: ""
+            if (lastContext.isBlank()) {
+                return generateFactReplies(
+                    "Could you please specify more context or details so I can answer accurately?",
+                    "Context needed",
+                    responseMode,
+                    preferredTone,
+                    requestedCount
+                )
+            } else if (lastContext.contains("project") || lastContext.contains("delay") || lastContext.contains("roadmap")) {
+                return generateFactReplies(
+                    "It is undergoing extra quality assurance and testing checks before release.",
+                    "Quality checks",
+                    responseMode,
+                    preferredTone,
+                    requestedCount
+                )
+            }
+        }
         if (lower.contains("capital") && (lower.contains("japan") || lower.contains("tokyo"))) {
             return generateFactReplies("Tokyo is the capital of Japan.", "Tokyo", responseMode, preferredTone, requestedCount)
         }
@@ -335,13 +364,19 @@ class DefaultAiReplyService : AiReplyService {
         val list = when (responseMode) {
             ResponseMode.SINGLE_WORD -> listOf(
                 ReplySuggestion(UUID.randomUUID().toString(), mathResult, ReplyTone.CONCISE, mode = responseMode),
-                ReplySuggestion(UUID.randomUUID().toString(), mathResult, ReplyTone.PROFESSIONAL, mode = responseMode)
+                ReplySuggestion(UUID.randomUUID().toString(), "$mathResult.", ReplyTone.PROFESSIONAL, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "$mathResult!", ReplyTone.FRIENDLY, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "=$mathResult", ReplyTone.CASUAL, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "#$mathResult", ReplyTone.CASUAL, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "Total: $mathResult", ReplyTone.PROFESSIONAL, mode = responseMode)
             )
             ResponseMode.ONE_LINE, ResponseMode.PASSIVE -> listOf(
                 ReplySuggestion(UUID.randomUUID().toString(), "The result is $mathResult.", ReplyTone.PROFESSIONAL, mode = responseMode),
                 ReplySuggestion(UUID.randomUUID().toString(), "That equals $mathResult!", ReplyTone.FRIENDLY, mode = responseMode),
                 ReplySuggestion(UUID.randomUUID().toString(), "$mathResult", ReplyTone.CONCISE, mode = responseMode),
-                ReplySuggestion(UUID.randomUUID().toString(), "It's $mathResult.", ReplyTone.CASUAL, mode = responseMode)
+                ReplySuggestion(UUID.randomUUID().toString(), "It's $mathResult.", ReplyTone.CASUAL, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "The calculated answer is $mathResult.", ReplyTone.PROFESSIONAL, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "Equals $mathResult.", ReplyTone.CONCISE, mode = responseMode)
             )
             ResponseMode.TWO_LINE -> listOf(
                 ReplySuggestion(UUID.randomUUID().toString(), "Calculation completed.\nThe calculated answer is $mathResult.", ReplyTone.PROFESSIONAL, mode = responseMode),
@@ -373,13 +408,19 @@ class DefaultAiReplyService : AiReplyService {
         val list = when (responseMode) {
             ResponseMode.SINGLE_WORD -> listOf(
                 ReplySuggestion(UUID.randomUUID().toString(), factWord, ReplyTone.CONCISE, mode = responseMode),
-                ReplySuggestion(UUID.randomUUID().toString(), "$factWord.", ReplyTone.PROFESSIONAL, mode = responseMode)
+                ReplySuggestion(UUID.randomUUID().toString(), "$factWord.", ReplyTone.PROFESSIONAL, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "$factWord!", ReplyTone.FRIENDLY, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), factWord.uppercase(), ReplyTone.CASUAL, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "[$factWord]", ReplyTone.CONCISE, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), factWord.lowercase(), ReplyTone.CASUAL, mode = responseMode)
             )
             ResponseMode.ONE_LINE, ResponseMode.PASSIVE -> listOf(
                 ReplySuggestion(UUID.randomUUID().toString(), factSentence, ReplyTone.PROFESSIONAL, mode = responseMode),
                 ReplySuggestion(UUID.randomUUID().toString(), "$factWord is the answer!", ReplyTone.FRIENDLY, mode = responseMode),
                 ReplySuggestion(UUID.randomUUID().toString(), factWord, ReplyTone.CONCISE, mode = responseMode),
-                ReplySuggestion(UUID.randomUUID().toString(), "That would be $factWord.", ReplyTone.CASUAL, mode = responseMode)
+                ReplySuggestion(UUID.randomUUID().toString(), "That would be $factWord.", ReplyTone.CASUAL, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "The verified answer is $factWord.", ReplyTone.PROFESSIONAL, mode = responseMode),
+                ReplySuggestion(UUID.randomUUID().toString(), "Confirmed: $factWord.", ReplyTone.CONCISE, mode = responseMode)
             )
             ResponseMode.TWO_LINE -> listOf(
                 ReplySuggestion(UUID.randomUUID().toString(), "$factSentence\nLet me know if you need additional details.", ReplyTone.PROFESSIONAL, mode = responseMode),

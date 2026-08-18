@@ -127,3 +127,111 @@ val StatusRoseLight = StatusErrorLight
 val BrandGradient = BrandRedGradient
 val BrandAccentGradient = BrandRedAccentGradient
 val SleekCardGradient = DarkRedCardGradient
+
+// =========================================================================
+// Dynamic UI Theme Data Class & Resolver
+// =========================================================================
+
+data class DynamicUiTheme(
+    val primary: Color,
+    val primaryDark: Color,
+    val primaryLight: Color,
+    val primaryBright: Color,
+    val surface: Color,
+    val surfaceBorder: Color,
+    val surfaceCard: Color,
+    val surfaceHover: Color,
+    val surfaceElevated: Color,
+    val accentText: Color,
+    val onPrimary: Color,
+    val gradient: Brush,
+    val cardGradient: Brush,
+    val opacity: Float = 0.98f
+)
+
+fun resolveDynamicTheme(
+    preset: com.example.model.UiColorPreset,
+    customHex: Long,
+    opacity: Float = 0.98f
+): DynamicUiTheme {
+    val (primary, primaryDark, primaryLight, surface, border, text) = if (preset == com.example.model.UiColorPreset.CUSTOM) {
+        val baseColor = Color(customHex.toULong())
+        val r = baseColor.red
+        val g = baseColor.green
+        val b = baseColor.blue
+
+        val dark = Color((r * 0.65f), (g * 0.65f), (b * 0.65f), 1.0f)
+        val light = Color(
+            (r + (1f - r) * 0.35f).coerceIn(0f, 1f),
+            (g + (1f - g) * 0.35f).coerceIn(0f, 1f),
+            (b + (1f - b) * 0.35f).coerceIn(0f, 1f),
+            1.0f
+        )
+        val surf = Color(
+            (0.06f + r * 0.12f).coerceIn(0f, 1f),
+            (0.04f + g * 0.12f).coerceIn(0f, 1f),
+            (0.05f + b * 0.12f).coerceIn(0f, 1f),
+            1.0f
+        )
+        val bord = Color(
+            (0.12f + r * 0.22f).coerceIn(0f, 1f),
+            (0.08f + g * 0.22f).coerceIn(0f, 1f),
+            (0.10f + b * 0.22f).coerceIn(0f, 1f),
+            1.0f
+        )
+        val txt = Color(
+            (0.85f + r * 0.15f).coerceIn(0f, 1f),
+            (0.80f + g * 0.15f).coerceIn(0f, 1f),
+            (0.82f + b * 0.15f).coerceIn(0f, 1f),
+            1.0f
+        )
+        listOf(baseColor, dark, light, surf, bord, txt)
+    } else {
+        listOf(
+            Color(preset.primaryHex),
+            Color(preset.darkHex),
+            Color(preset.lightHex),
+            Color(preset.surfaceHex),
+            Color(preset.borderHex),
+            Color(preset.textHex)
+        )
+    }
+
+    val primaryBright = primaryLight
+    val surfaceElevated = Color(
+        (surface.red * 1.3f).coerceIn(0f, 1f),
+        (surface.green * 1.3f).coerceIn(0f, 1f),
+        (surface.blue * 1.3f).coerceIn(0f, 1f),
+        1.0f
+    )
+    val surfaceCard = Color(
+        (surface.red * 0.85f).coerceIn(0f, 1f),
+        (surface.green * 0.85f).coerceIn(0f, 1f),
+        (surface.blue * 0.85f).coerceIn(0f, 1f),
+        1.0f
+    )
+    val surfaceHover = Color(
+        (surface.red * 1.5f).coerceIn(0f, 1f),
+        (surface.green * 1.5f).coerceIn(0f, 1f),
+        (surface.blue * 1.5f).coerceIn(0f, 1f),
+        1.0f
+    )
+
+    return DynamicUiTheme(
+        primary = primary,
+        primaryDark = primaryDark,
+        primaryLight = primaryLight,
+        primaryBright = primaryBright,
+        surface = surface,
+        surfaceBorder = border,
+        surfaceCard = surfaceCard,
+        surfaceHover = surfaceHover,
+        surfaceElevated = surfaceElevated,
+        accentText = text,
+        onPrimary = Color.White,
+        gradient = Brush.linearGradient(listOf(primaryDark, primary, primaryLight)),
+        cardGradient = Brush.verticalGradient(listOf(surfaceElevated, surfaceCard)),
+        opacity = opacity.coerceIn(0.40f, 1.0f)
+    )
+}
+

@@ -28,8 +28,11 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Opacity
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
@@ -84,6 +87,8 @@ import com.example.model.BotProviderType
 import com.example.model.DockPosition
 import com.example.model.PurgeDuration
 import com.example.model.ReplyTone
+import com.example.model.UiColorPreset
+import com.example.ui.theme.resolveDynamicTheme
 import com.example.ui.theme.BrandRed
 import com.example.ui.theme.BrandRedBorder
 import com.example.ui.theme.BrandRedDark
@@ -831,6 +836,551 @@ fun SettingsScreen(
                 isGranted = settings.notificationPermissionGranted,
                 onToggle = onRequestNotificationPermission
             )
+        }
+
+        // =========================================================================
+        // SECTION: UI COLOR & FLOATING BAR THEME CUSTOMIZER
+        // =========================================================================
+        SettingsSectionCard(
+            title = "Floating UI Color & Appearance",
+            description = "Customize the theme color, custom hex tone, and opacity of all floating bars"
+        ) {
+            val resolvedTheme = resolveDynamicTheme(
+                preset = settings.uiColorPreset,
+                customHex = settings.customUiColorHex,
+                opacity = settings.overlayOpacity
+            )
+            var customHexInput by remember(settings.customUiColorHex) {
+                mutableStateOf(settings.customUiColorHex)
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Color Presets Grid
+                Text(
+                    text = "Theme Presets",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                )
+
+                val presetList = listOf(
+                    UiColorPreset.DARK_RED to "Dark Red (Default)",
+                    UiColorPreset.RED to "Crimson Red",
+                    UiColorPreset.BLUE to "Electric Blue",
+                    UiColorPreset.PURPLE to "Royal Purple",
+                    UiColorPreset.GREEN to "Emerald Green",
+                    UiColorPreset.ORANGE to "Sunset Orange",
+                    UiColorPreset.CYAN to "Vibrant Cyan",
+                    UiColorPreset.PINK to "Neon Pink"
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    presetList.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            pair.forEach { (preset, label) ->
+                                val isSelected = settings.uiColorPreset == preset
+                                val presetTheme = resolveDynamicTheme(preset, "#8B0000", 1.0f)
+                                Surface(
+                                    shape = RoundedCornerShape(ReplyFloatDimens.radiusLarge),
+                                    color = if (isSelected) presetTheme.brandSurface else DarkRedSurfaceCard,
+                                    border = BorderStroke(
+                                        if (isSelected) 1.5.dp else 1.dp,
+                                        if (isSelected) presetTheme.brandPrimary else DarkRedSurfaceBorder
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(ReplyFloatDimens.radiusLarge))
+                                        .clickable {
+                                            onUpdateSettings { it.copy(uiColorPreset = preset) }
+                                        }
+                                        .testTag("ui_color_preset_${preset.name}")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clip(CircleShape)
+                                                .background(presetTheme.brandPrimary)
+                                                .then(
+                                                    if (isSelected) Modifier.background(presetTheme.brandPrimary)
+                                                    else Modifier
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (isSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) presetTheme.brandText else TextPrimary,
+                                                fontSize = 11.sp
+                                            ),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Custom Color Hex Option Card
+                val isCustomSelected = settings.uiColorPreset == UiColorPreset.CUSTOM
+                Surface(
+                    shape = RoundedCornerShape(ReplyFloatDimens.radiusLarge),
+                    color = if (isCustomSelected) resolvedTheme.brandSurface else DarkRedSurfaceCard,
+                    border = BorderStroke(
+                        if (isCustomSelected) 1.5.dp else 1.dp,
+                        if (isCustomSelected) resolvedTheme.brandPrimary else DarkRedSurfaceBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(ReplyFloatDimens.radiusLarge))
+                        .clickable {
+                            onUpdateSettings { it.copy(uiColorPreset = UiColorPreset.CUSTOM) }
+                        }
+                        .testTag("ui_color_preset_CUSTOM")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .background(resolvedTheme.brandPrimary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isCustomSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+
+                                Column {
+                                    Text(
+                                        text = "Custom Hex Tone",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isCustomSelected) resolvedTheme.brandText else TextPrimary
+                                        )
+                                    )
+                                    Text(
+                                        text = "Enter any 6-digit hex code or choose quick swatches",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = TextSecondary,
+                                            fontSize = 11.sp
+                                        )
+                                    )
+                                }
+                            }
+
+                            RadioButton(
+                                selected = isCustomSelected,
+                                onClick = { onUpdateSettings { it.copy(uiColorPreset = UiColorPreset.CUSTOM) } },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = resolvedTheme.brandPrimary,
+                                    unselectedColor = TextTertiary
+                                )
+                            )
+                        }
+
+                        // Hex Input Row & Quick Palette
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = customHexInput,
+                                onValueChange = { input ->
+                                    val sanitized = input.take(7)
+                                    customHexInput = sanitized
+                                    if (sanitized.startsWith("#") && (sanitized.length == 7 || sanitized.length == 9)) {
+                                        onUpdateSettings { it.copy(uiColorPreset = UiColorPreset.CUSTOM, customUiColorHex = sanitized) }
+                                    } else if (!sanitized.startsWith("#") && sanitized.length == 6) {
+                                        val withHash = "#$sanitized"
+                                        onUpdateSettings { it.copy(uiColorPreset = UiColorPreset.CUSTOM, customUiColorHex = withHash) }
+                                    }
+                                },
+                                label = { Text("Color Hex (e.g. #FF5722)", fontSize = 11.sp) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("custom_color_hex_input"),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = resolvedTheme.brandPrimary,
+                                    unfocusedBorderColor = DarkRedSurfaceBorder,
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary,
+                                    cursorColor = resolvedTheme.brandPrimary
+                                )
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(ReplyFloatDimens.radiusMedium))
+                                    .background(resolvedTheme.brandPrimary)
+                                    .padding(2.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Palette,
+                                    contentDescription = "Current Color",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        // Quick Palette Swatches
+                        val quickSwatches = listOf(
+                            "#FF1744", "#D500F9", "#2979FF", "#00E5FF",
+                            "#00E676", "#FFEA00", "#FF6D00", "#795548"
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            quickSwatches.forEach { hex ->
+                                val swatchColor = try {
+                                    Color(android.graphics.Color.parseColor(hex))
+                                } catch (e: Exception) {
+                                    BrandRed
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(swatchColor)
+                                        .clickable {
+                                            customHexInput = hex
+                                            onUpdateSettings {
+                                                it.copy(
+                                                    uiColorPreset = UiColorPreset.CUSTOM,
+                                                    customUiColorHex = hex
+                                                )
+                                            }
+                                        }
+                                        .then(
+                                            if (settings.customUiColorHex.equals(hex, ignoreCase = true) && isCustomSelected) {
+                                                Modifier.background(swatchColor)
+                                            } else Modifier
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (settings.customUiColorHex.equals(hex, ignoreCase = true) && isCustomSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = DarkRedSurfaceBorder)
+
+                // Overlay Opacity Slider
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Opacity,
+                                contentDescription = null,
+                                tint = resolvedTheme.brandPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Floating Bar Opacity",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+                            color = resolvedTheme.brandSurface,
+                            border = BorderStroke(0.5.dp, resolvedTheme.brandBorder)
+                        ) {
+                            Text(
+                                text = "${(settings.overlayOpacity * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = resolvedTheme.brandText
+                                ),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Adjust background transparency of Bar 1 (Mini-Bubble), Bar 2 (Assistant Card), and Bar 3 (Translation Card)",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                    )
+
+                    Slider(
+                        value = settings.overlayOpacity,
+                        onValueChange = { newOpacity ->
+                            onUpdateSettings { it.copy(overlayOpacity = newOpacity) }
+                        },
+                        valueRange = 0.40f..1.00f,
+                        steps = 12,
+                        colors = SliderDefaults.colors(
+                            thumbColor = resolvedTheme.brandPrimary,
+                            activeTrackColor = resolvedTheme.brandPrimary,
+                            inactiveTrackColor = DarkRedSurfaceBorder
+                        ),
+                        modifier = Modifier.testTag("overlay_opacity_slider")
+                    )
+
+                    // Quick Opacity Presets
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(0.50f to "50%", 0.75f to "75%", 0.90f to "90%", 1.00f to "100% (Solid)").forEach { (value, label) ->
+                            val isOpSelected = (settings.overlayOpacity - value).let { kotlin.math.abs(it) < 0.04f }
+                            Surface(
+                                shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+                                color = if (isOpSelected) resolvedTheme.brandSurface else DarkRedSurfaceCard,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isOpSelected) resolvedTheme.brandBorder else DarkRedSurfaceBorder
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(ReplyFloatDimens.radiusPill))
+                                    .clickable {
+                                        onUpdateSettings { it.copy(overlayOpacity = value) }
+                                    }
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.sp,
+                                            fontWeight = if (isOpSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isOpSelected) resolvedTheme.brandText else TextSecondary
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = DarkRedSurfaceBorder)
+
+                // Live Floating Bar Mini Preview
+                Text(
+                    text = "Live Theme Preview",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(ReplyFloatDimens.radiusLarge),
+                    color = resolvedTheme.surfaceElevated,
+                    border = BorderStroke(1.dp, resolvedTheme.surfaceBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Preview Bar 1: Mini Bubble
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+                                color = resolvedTheme.brandPrimary,
+                                shadowElevation = 2.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = "3 Replies",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.sp,
+                                            color = Color.White
+                                        )
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Bar 1 • Floating Bubble",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = TextSecondary,
+                                    fontSize = 10.sp
+                                )
+                            )
+                        }
+
+                        // Preview Bar 2: Card Header & Sample Reply Pill
+                        Surface(
+                            shape = RoundedCornerShape(ReplyFloatDimens.radiusMedium),
+                            color = resolvedTheme.surfaceCard,
+                            border = BorderStroke(1.dp, resolvedTheme.surfaceBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(resolvedTheme.brandPrimary)
+                                    )
+                                    Text(
+                                        text = "Bar 2 • Assistant Header",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary,
+                                            fontSize = 11.sp
+                                        )
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
+                                    color = resolvedTheme.brandSurface,
+                                    border = BorderStroke(0.5.dp, resolvedTheme.brandBorder)
+                                ) {
+                                    Text(
+                                        text = "Smart Reply",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = resolvedTheme.brandText,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Reset Theme Button
+                OutlinedButton(
+                    onClick = {
+                        onUpdateSettings {
+                            it.copy(
+                                uiColorPreset = UiColorPreset.DARK_RED,
+                                customUiColorHex = "#8B0000",
+                                overlayOpacity = 1.0f
+                            )
+                        }
+                    },
+                    shape = RoundedCornerShape(ReplyFloatDimens.radiusLarge),
+                    border = BorderStroke(1.dp, DarkRedSurfaceBorder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("reset_theme_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.RestartAlt,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Reset Theme to Dark Red Default",
+                        color = TextSecondary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp
+                    )
+                }
+            }
         }
 
         // =========================================================================

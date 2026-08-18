@@ -2,9 +2,10 @@ package com.example.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.example.ai.LanguageDetectionEngine
 import com.example.data.OverlayStateManager
 import com.example.model.DetectedMessage
 import kotlinx.coroutines.CoroutineScope
@@ -14,11 +15,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.ArrayDeque
+import java.util.Locale
 import java.util.UUID
 
 /**
- * Accessibility Service responsible for observing on-screen conversation events,
- * debouncing high-frequency UI updates, and extracting structured incoming messages.
+ * Intelligent Accessibility Service that responds ONLY to genuinely NEW questions/messages.
+ * Ignores UI clutter (tabs, menus, buttons, status bars, timestamps, scrolling, old conversation).
+ * Multi-lingual question detection: English, Hinglish, Bengali, Russian, Hindi, Spanish, etc.
  */
 class ReplyAccessibilityService : AccessibilityService() {
 
@@ -35,13 +39,16 @@ class ReplyAccessibilityService : AccessibilityService() {
             "com.android.launcher3"
         )
 
-        private val IGNORED_TEXT_EXACT = setOf(
+        private val IGNORED_EXACT_OR_PREFIX = setOf(
             "send", "reply", "back", "cancel", "search", "more", "options", "done",
             "type a message", "message", "chat", "voice message", "call", "video call",
             "online", "typing...", "unread messages", "today", "yesterday", "home",
             "new tab", "tabs", "search or type url", "bookmarks", "history", "downloads",
             "settings", "reload", "share", "close tab", "switch tab", "menu", "open",
-            "close", "save", "delete", "edit", "copy", "cut", "paste", "select all"
+            "close", "save", "delete", "edit", "copy", "cut", "paste", "select all",
+            "subscribe", "like", "follow", "comment", "posts", "reels", "shorts",
+            "notifications", "view all", "show more", "show less", "mute", "block",
+            "report", "clear chat", "media, links, and docs", "starred messages"
         )
 
         private val IGNORED_CLASS_NAMES = setOf(
@@ -59,8 +66,12 @@ class ReplyAccessibilityService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var analysisDebounceJob: Job? = null
-    private var lastExtractedText: String = ""
-    private var lastExtractedTime: Long = 0L
+
+    // Ring-buffer for deduplicating already processed messages across screens & scrolling
+    private val processedMessageHashes = ArrayDeque<Int>(60)
+    private val processedMessageTexts = ArrayDeque<String>(60)
+    private var lastProcessedNormalized: String = ""
+    private var lastProcessedTimestamp: Long = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -73,7 +84,7 @@ class ReplyAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
         info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-        info.notificationTimeout = 400
+        info.notificationTimeout = 350
         serviceInfo = info
     }
 
@@ -91,7 +102,6 @@ class ReplyAccessibilityService : AccessibilityService() {
         // Skip system keyboards, launcher UI, and system bars
         if (IGNORED_PACKAGES.contains(pkgName)) return
 
-        // Process only relevant event types
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
@@ -102,13 +112,12 @@ class ReplyAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Debounces rapid UI changes (such as fast typing or continuous animations)
-     * before running node tree analysis.
+     * Debounces rapid UI changes before running node tree analysis.
      */
     private fun scheduleScreenAnalysis(packageName: String) {
         analysisDebounceJob?.cancel()
         analysisDebounceJob = serviceScope.launch {
-            delay(500) // 500ms debounce window
+            delay(400) // 400ms debounce
             extractAndProcessLatestMessage(packageName)
         }
     }
@@ -118,31 +127,44 @@ class ReplyAccessibilityService : AccessibilityService() {
 
         try {
             val appLabel = getAppLabel(packageName)
-            val extractedNodes = mutableListOf<NodeTextData>()
+            val extractedCandidates = mutableListOf<CandidateMessageNode>()
 
-            traverseNodeHierarchy(rootNode, extractedNodes, depth = 0, maxDepth = 18)
+            traverseNodeHierarchy(rootNode, extractedCandidates, depth = 0, maxDepth = 20)
 
-            val candidate = findBestCandidateMessage(extractedNodes) ?: return
+            // Identify the NEWEST valid conversational message/question
+            val newestCandidate = findNewestValidCandidate(extractedCandidates) ?: return
 
-            val cleanText = candidate.text.trim()
+            val cleanText = newestCandidate.text.trim()
+            val normalized = normalizeMessage(cleanText)
+            val textHash = normalized.hashCode()
             val now = System.currentTimeMillis()
 
-            // Deduplication: Avoid re-triggering for identical text within 3 seconds
-            if (cleanText.equals(lastExtractedText, ignoreCase = true) && (now - lastExtractedTime) < 3000) {
+            // Strict Deduplication Check:
+            // 1. If exact normalized text matches the currently active question
+            // 2. If it is already in our processed ring-buffer from earlier in this session
+            // 3. If it was processed very recently (< 5 seconds ago)
+            if (normalized == lastProcessedNormalized || processedMessageHashes.contains(textHash) || processedMessageTexts.contains(normalized)) {
                 return
             }
 
-            lastExtractedText = cleanText
-            lastExtractedTime = now
+            // Record as processed
+            lastProcessedNormalized = normalized
+            lastProcessedTimestamp = now
+            if (processedMessageHashes.size >= 50) {
+                processedMessageHashes.removeFirst()
+                processedMessageTexts.removeFirst()
+            }
+            processedMessageHashes.addLast(textHash)
+            processedMessageTexts.addLast(normalized)
 
             val detectedMessage = DetectedMessage(
                 eventId = UUID.randomUUID().toString(),
                 text = cleanText,
-                sender = candidate.sender ?: "Sender",
+                sender = newestCandidate.sender ?: "Incoming Message",
                 sourceApp = appLabel,
                 packageName = packageName,
                 timestamp = now,
-                confidence = candidate.confidence,
+                confidence = newestCandidate.confidence,
                 isIncoming = true
             )
 
@@ -150,7 +172,7 @@ class ReplyAccessibilityService : AccessibilityService() {
                 OverlayStateManager.onNewMessageDetected(detectedMessage)
             }
         } catch (e: Exception) {
-            // Safe silent error boundary to prevent accessibility service crash
+            // Safe boundary
         } finally {
             try {
                 rootNode.recycle()
@@ -161,18 +183,18 @@ class ReplyAccessibilityService : AccessibilityService() {
 
     private fun traverseNodeHierarchy(
         node: AccessibilityNodeInfo?,
-        results: MutableList<NodeTextData>,
+        results: MutableList<CandidateMessageNode>,
         depth: Int,
         maxDepth: Int
     ) {
-        if (node == null || depth > maxDepth || results.size > 80) return
+        if (node == null || depth > maxDepth || results.size > 70) return
 
         val text = node.text?.toString()?.trim()
         val contentDesc = node.contentDescription?.toString()?.trim()
-        val viewId = node.viewIdResourceName?.lowercase() ?: ""
-        val className = node.className?.toString()?.lowercase() ?: ""
+        val viewId = node.viewIdResourceName?.lowercase(Locale.ROOT) ?: ""
+        val className = node.className?.toString()?.lowercase(Locale.ROOT) ?: ""
 
-        val candidateText = when {
+        val rawText = when {
             !text.isNullOrBlank() -> text
             !contentDesc.isNullOrBlank() -> contentDesc
             else -> null
@@ -180,52 +202,24 @@ class ReplyAccessibilityService : AccessibilityService() {
 
         val isIgnoredClass = IGNORED_CLASS_NAMES.any { className.contains(it) }
 
-        if (!candidateText.isNullOrBlank() && !isIgnoredClass && isValidMessageText(candidateText)) {
-            val isLikelyTimestamp = candidateText.matches(Regex("^[0-9]{1,2}:[0-9]{2}(\\s?[AaPp][Mm])?$"))
-            val isLikelyUrl = candidateText.contains("http://") || candidateText.contains("https://") ||
-                candidateText.contains("www.") || candidateText.endsWith(".com") || candidateText.endsWith(".org")
-
-            if (!isLikelyTimestamp && !isLikelyUrl) {
-                var confidence = 0.0f
-                val lower = candidateText.lowercase()
-
-                // Chat view ID signals
-                if (viewId.contains("message") || viewId.contains("chat") || viewId.contains("msg") ||
-                    viewId.contains("body") || viewId.contains("conversation") || viewId.contains("bubble")
-                ) {
-                    confidence += 0.45f
+        if (!rawText.isNullOrBlank() && !isIgnoredClass && isPotentialConversationalMessage(rawText)) {
+            val score = scoreMessageQuality(rawText, viewId)
+            if (score >= 0.50f) {
+                val bounds = Rect()
+                try {
+                    node.getBoundsInScreen(bounds)
+                } catch (ignored: Exception) {
                 }
 
-                // Question signal
-                if (candidateText.contains("?")) {
-                    confidence += 0.35f
-                }
-
-                // Conversational keywords / starters
-                val conversationalPhrases = listOf(
-                    "hey", "hello", "hi ", "can you", "what", "where", "how", "when", "why", "who",
-                    "are you", "will you", "could you", "would you", "is it", "let's", "do you", "thank",
-                    "please", "sure", "sounds good", "free", "meet", "lunch", "sync", "time", "call"
-                )
-                if (conversationalPhrases.any { lower.contains(it) }) {
-                    confidence += 0.30f
-                }
-
-                // Sentence length signal
-                if (candidateText.length >= 15 && candidateText.contains(" ")) {
-                    confidence += 0.15f
-                }
-
-                if (confidence >= 0.45f) {
-                    results.add(
-                        NodeTextData(
-                            text = candidateText,
-                            viewId = viewId,
-                            depth = depth,
-                            confidence = confidence.coerceIn(0.1f, 1.0f)
-                        )
+                results.add(
+                    CandidateMessageNode(
+                        text = rawText,
+                        viewId = viewId,
+                        depth = depth,
+                        screenY = bounds.bottom,
+                        confidence = score.coerceIn(0.1f, 1.0f)
                     )
-                }
+                )
             }
         }
 
@@ -239,25 +233,103 @@ class ReplyAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun isValidMessageText(text: String): Boolean {
+    /**
+     * Filters out non-conversational text, buttons, tabs, timestamps, etc.
+     */
+    private fun isPotentialConversationalMessage(text: String): Boolean {
         val trimmed = text.trim()
         if (trimmed.length < 3) return false
-        val lower = trimmed.lowercase()
-        if (IGNORED_TEXT_EXACT.contains(lower)) return false
-        if (lower.startsWith("tab ") || lower.contains("new tab") || lower.contains("close tab")) return false
-        // Exclude pure numbers / symbols
-        if (trimmed.matches(Regex("^[0-9.,:;+\\-*/%#@!$&()]+$"))) return false
+
+        val lower = trimmed.lowercase(Locale.ROOT)
+
+        // Ignore exact matches or common button/tab labels
+        if (IGNORED_EXACT_OR_PREFIX.contains(lower)) return false
+        if (lower.startsWith("tab ") || lower.contains("new tab") || lower.contains("close tab") || lower.contains("tabs open")) return false
+        if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("www.")) return false
+
+        // Exclude pure numbers, percentages, or status clock formats (e.g. "12:45", "98%", "5G", "12/04/2026")
+        if (trimmed.matches(Regex("^[0-9.,:;+\\-*/%#@!$&()\\s]+$"))) return false
+        if (trimmed.matches(Regex("^[0-9]{1,2}:[0-9]{2}(\\s?[AaPp][Mm])?$"))) return false
+
         return true
     }
 
-    private fun findBestCandidateMessage(nodes: List<NodeTextData>): NodeTextData? {
-        if (nodes.isEmpty()) return null
+    /**
+     * Scores how likely the text is an actual user question or conversational incoming message.
+     * Evaluates multilingual question tokens (English, Hinglish, Bengali, Russian, Hindi, Spanish, etc.)
+     */
+    private fun scoreMessageQuality(text: String, viewId: String): Float {
+        var score = 0.0f
+        val lower = text.lowercase(Locale.ROOT)
 
-        // Require minimum confidence of 0.45 so random UI elements don't trigger
-        val highConfidenceNodes = nodes.filter { it.confidence >= 0.45f }
-        if (highConfidenceNodes.isEmpty()) return null
+        // 1. Explicit Question Marks (Universal)
+        if (text.contains("?") || text.contains("¿") || text.contains("؟")) {
+            score += 0.45f
+        }
 
-        return highConfidenceNodes.maxByOrNull { it.confidence * 2f + it.depth }
+        // 2. Chat View ID Signals
+        if (viewId.contains("message") || viewId.contains("chat") || viewId.contains("msg") ||
+            viewId.contains("body") || viewId.contains("conversation") || viewId.contains("bubble") ||
+            viewId.contains("text_view")
+        ) {
+            score += 0.35f
+        }
+
+        // 3. Multi-Lingual Question & Conversational Keywords
+        val isBengaliQuestion = text.any { it in '\u0980'..'\u09FF' } &&
+            (lower.contains("কী") || lower.contains("কেন") || lower.contains("কিভাবে") || lower.contains("কীভাবে") ||
+                lower.contains("কেমন") || lower.contains("কোথায়") || lower.contains("কখন") || lower.contains("পারি") || lower.contains("হবে"))
+
+        val isRussianQuestion = text.any { it in '\u0400'..'\u04FF' } &&
+            (lower.contains("как") || lower.contains("что") || lower.contains("где") || lower.contains("когда") ||
+                lower.contains("почему") || lower.contains("зачем") || lower.contains("кто") || lower.contains("ли") || lower.contains("привет"))
+
+        val isHindiQuestion = text.any { it in '\u0900'..'\u097F' } &&
+            (lower.contains("क्या") || lower.contains("क्यों") || lower.contains("कैसे") || lower.contains("कहाँ") ||
+                lower.contains("कब") || lower.contains("कौन") || lower.contains("नमस्ते"))
+
+        val isHinglishQuestion = (lower.contains("kaise") || lower.contains("kya") || lower.contains("kyu") || lower.contains("kyun") ||
+            lower.contains("karna") || lower.contains("chahiye") || lower.contains("bhai") || lower.contains("batao") ||
+            lower.contains("shuru") || lower.contains("start karna") || lower.contains("kese"))
+
+        val isEnglishQuestionOrChat = lower.startsWith("how") || lower.startsWith("what") || lower.startsWith("where") ||
+            lower.startsWith("when") || lower.startsWith("why") || lower.startsWith("who") || lower.startsWith("can you") ||
+            lower.startsWith("could you") || lower.startsWith("would you") || lower.startsWith("is it") || lower.startsWith("are you") ||
+            lower.startsWith("do you") || lower.contains("review") || lower.contains("free to") || lower.contains("available") ||
+            lower.contains("meeting") || lower.contains("lunch") || lower.contains("sync")
+
+        if (isBengaliQuestion || isRussianQuestion || isHindiQuestion || isHinglishQuestion || isEnglishQuestionOrChat) {
+            score += 0.40f
+        }
+
+        // 4. Sentence Structure (Has spaces and reasonable length)
+        if (text.length >= 12 && text.contains(" ")) {
+            score += 0.20f
+        }
+
+        return score
+    }
+
+    /**
+     * Determines which candidate is the NEWEST valid user question.
+     * In standard chat apps, the newest message appears at the bottom of the screen (largest screenY)
+     * or deepest in the node hierarchy.
+     */
+    private fun findNewestValidCandidate(candidates: List<CandidateMessageNode>): CandidateMessageNode? {
+        if (candidates.isEmpty()) return null
+
+        val highQuality = candidates.filter { it.confidence >= 0.50f }
+        if (highQuality.isEmpty()) return null
+
+        // Pick bottom-most (largest screenY) with strong confidence, or deepest node
+        return highQuality.maxByOrNull { it.screenY.toFloat() * 1.5f + (it.confidence * 200f) + it.depth }
+    }
+
+    private fun normalizeMessage(text: String): String {
+        return text.lowercase(Locale.ROOT)
+            .replace(Regex("[^\\p{L}\\p{Nd}\\s]"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     private fun getAppLabel(packageName: String): String {
@@ -281,10 +353,11 @@ class ReplyAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
-    private data class NodeTextData(
+    private data class CandidateMessageNode(
         val text: String,
         val viewId: String,
         val depth: Int,
+        val screenY: Int,
         val confidence: Float,
         val sender: String? = null
     )

@@ -44,6 +44,9 @@ object PreferencesManager {
     private const val KEY_CUSTOM_DEBOUNCE_MS = "key_custom_debounce_ms"
     private const val KEY_CUSTOM_TIMEOUT_SEC = "key_custom_timeout_sec"
     private const val KEY_ACTIVE_BOT_ID = "key_active_bot_id"
+    private const val KEY_UI_COLOR_PRESET = "key_ui_color_preset"
+    private const val KEY_CUSTOM_UI_COLOR_HEX = "key_custom_ui_color_hex"
+    private const val KEY_OVERLAY_OPACITY = "key_overlay_opacity"
     private const val KEY_CONFIGURED_BOTS_JSON = "key_configured_bots_json"
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -68,6 +71,9 @@ object PreferencesManager {
             putLong(KEY_CUSTOM_DEBOUNCE_MS, settings.customDebounceMs)
             putInt(KEY_CUSTOM_TIMEOUT_SEC, settings.customTimeoutSeconds)
             putString(KEY_ACTIVE_BOT_ID, settings.activeBotId)
+            putString(KEY_UI_COLOR_PRESET, settings.uiColorPreset.name)
+            putLong(KEY_CUSTOM_UI_COLOR_HEX, settings.customUiColorHex)
+            putFloat(KEY_OVERLAY_OPACITY, settings.overlayOpacity)
             apply()
         }
     }
@@ -80,6 +86,7 @@ object PreferencesManager {
         val recentRetentionName = prefs.getString(KEY_RECENT_RETENTION, com.example.model.RecentRetentionDuration.TWO_MINUTES.name) ?: com.example.model.RecentRetentionDuration.TWO_MINUTES.name
         val purgeName = prefs.getString(KEY_PURGE_DURATION, PurgeDuration.FIVE_MINUTES.name) ?: PurgeDuration.FIVE_MINUTES.name
         val latencyName = prefs.getString(KEY_LATENCY_MODE, AiLatencyMode.BALANCED.name) ?: AiLatencyMode.BALANCED.name
+        val uiColorName = prefs.getString(KEY_UI_COLOR_PRESET, com.example.model.UiColorPreset.DARK_RED.name) ?: com.example.model.UiColorPreset.DARK_RED.name
 
         val responseMode = try { com.example.model.ResponseMode.valueOf(modeName) } catch (e: Exception) { com.example.model.ResponseMode.PASSIVE }
         val defaultTone = try { ReplyTone.valueOf(toneName) } catch (e: Exception) { ReplyTone.BALANCED }
@@ -87,6 +94,7 @@ object PreferencesManager {
         val recentRetention = try { com.example.model.RecentRetentionDuration.valueOf(recentRetentionName) } catch (e: Exception) { com.example.model.RecentRetentionDuration.TWO_MINUTES }
         val purgeDuration = try { PurgeDuration.valueOf(purgeName) } catch (e: Exception) { PurgeDuration.FIVE_MINUTES }
         val latencyMode = try { AiLatencyMode.valueOf(latencyName) } catch (e: Exception) { AiLatencyMode.BALANCED }
+        val uiColorPreset = try { com.example.model.UiColorPreset.valueOf(uiColorName) } catch (e: Exception) { com.example.model.UiColorPreset.DARK_RED }
 
         return AppSettings(
             isScreenAnalysisOn = prefs.getBoolean(KEY_SCREEN_ANALYSIS_ON, true),
@@ -104,7 +112,10 @@ object PreferencesManager {
             latencyMode = latencyMode,
             customDebounceMs = prefs.getLong(KEY_CUSTOM_DEBOUNCE_MS, 500L),
             customTimeoutSeconds = prefs.getInt(KEY_CUSTOM_TIMEOUT_SEC, 10),
-            activeBotId = prefs.getString(KEY_ACTIVE_BOT_ID, "bot_gemini_flash") ?: "bot_gemini_flash"
+            activeBotId = prefs.getString(KEY_ACTIVE_BOT_ID, "bot_gemini_flash") ?: "bot_gemini_flash",
+            uiColorPreset = uiColorPreset,
+            customUiColorHex = prefs.getLong(KEY_CUSTOM_UI_COLOR_HEX, 0xFF7A0F16L),
+            overlayOpacity = prefs.getFloat(KEY_OVERLAY_OPACITY, 0.98f)
         )
     }
 

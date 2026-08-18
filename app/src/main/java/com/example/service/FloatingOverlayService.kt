@@ -85,6 +85,11 @@ class FloatingOverlayService : Service() {
     private var layoutParams: WindowManager.LayoutParams? = null
     private var lifecycleOwner: OverlayLifecycleOwner? = null
 
+    // Pass-Through Recovery Window (Stays interactive so user can always disable pass-through directly)
+    private var recoveryView: View? = null
+    private var recoveryLayoutParams: WindowManager.LayoutParams? = null
+    private var recoveryLifecycleOwner: OverlayLifecycleOwner? = null
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var stateCollectJob: Job? = null
 
@@ -104,6 +109,7 @@ class FloatingOverlayService : Service() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         updateScreenDimensions()
         createOverlayView()
+        createRecoveryView()
         observeStateChanges()
     }
 
@@ -203,9 +209,12 @@ class FloatingOverlayService : Service() {
             setViewTreeViewModelStoreOwner(owner)
 
             setContent {
-                ReplyFloatTheme {
-                    val state by OverlayStateManager.state.collectAsState()
-
+                val state by OverlayStateManager.state.collectAsState()
+                ReplyFloatTheme(
+                    preset = state.settings.uiColorPreset,
+                    customHex = state.settings.customUiColorHex,
+                    opacity = state.settings.overlayOpacity
+                ) {
                     if (state.isFloatingBarVisible) {
                         Box(
                             modifier = Modifier
@@ -228,6 +237,8 @@ class FloatingOverlayService : Service() {
                                 isScreenAnalysisOn = state.settings.isScreenAnalysisOn,
                                 responseMode = state.settings.responseMode,
                                 recentResults = state.recentResults,
+                                isLanguageBarActive = state.isLanguageBarActive,
+                                languageData = state.languageData,
                                 onReplyCopy = { reply ->
                                     OverlayStateManager.copyReply(this@FloatingOverlayService, reply)
                                 },
@@ -248,6 +259,12 @@ class FloatingOverlayService : Service() {
                                 },
                                 onDeleteRecentResult = { id ->
                                     OverlayStateManager.deleteRecentResult(id)
+                                },
+                                onLanguageBarToggle = {
+                                    OverlayStateManager.toggleLanguageBar()
+                                },
+                                onCopyText = { text, label ->
+                                    OverlayStateManager.copyText(this@FloatingOverlayService, text, label)
                                 },
                                 onMinimizeClick = {
                                     resetToWrapContent()
@@ -278,6 +295,95 @@ class FloatingOverlayService : Service() {
             overlayView = composeView
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    private fun createRecoveryView() {
+        if (recoveryView != null || !PermissionUtils.hasOverlayPermission(this)) return
+
+        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
+        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+
+        val initialX = OverlayStateManager.overlayX.value.coerceIn(16, (screenWidth - 260).coerceAtLeast(50))
+        val initialY = (OverlayStateManager.overlayY.value - 60).coerceIn(40, (screenHeight - 100).coerceAtLeast(40))
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayType,
+            flags,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = initialX
+            y = initialY
+        }
+        recoveryLayoutParams = params
+
+        val owner = OverlayLifecycleOwner()
+        owner.onCreate()
+        owner.onStart()
+        owner.onResume()
+        recoveryLifecycleOwner = owner
+
+        val composeView = ComposeView(this).apply {
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
+            setViewTreeViewModelStoreOwner(owner)
+
+            setContent {
+                val state by OverlayStateManager.state.collectAsState()
+                if (state.passThroughState == PassThroughState.ENABLED && state.isFloatingBarVisible) {
+                    ReplyFloatTheme(
+                        preset = state.settings.uiColorPreset,
+                        customHex = state.settings.customUiColorHex,
+                        opacity = state.settings.overlayOpacity
+                    ) {
+                        Box(modifier = Modifier.padding(4.dp)) {
+                            com.example.ui.components.FloatingPassThroughRecoveryPill(
+                                onDisablePassThrough = {
+                                    OverlayStateManager.setPassThrough(PassThroughState.DISABLED)
+                                },
+                                onDrag = { dx, dy ->
+                                    updateRecoveryPosition(dx, dy)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        try {
+            windowManager?.addView(composeView, params)
+            recoveryView = composeView
+            recoveryView?.visibility = if (OverlayStateManager.state.value.passThroughState == PassThroughState.ENABLED && OverlayStateManager.state.value.isFloatingBarVisible) View.VISIBLE else View.GONE
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun updateRecoveryPosition(dx: Float, dy: Float) {
+        val view = recoveryView ?: return
+        val params = recoveryLayoutParams ?: return
+
+        val newX = (params.x + dx.toInt()).coerceIn(0, (screenWidth - (view.width.takeIf { it > 0 } ?: 200)).coerceAtLeast(0))
+        val newY = (params.y + dy.toInt()).coerceIn(30, (screenHeight - (view.height.takeIf { it > 0 } ?: 80)).coerceAtLeast(30))
+
+        params.x = newX
+        params.y = newY
+
+        try {
+            windowManager?.updateViewLayout(view, params)
+        } catch (ignored: Exception) {
         }
     }
 
@@ -338,9 +444,27 @@ class FloatingOverlayService : Service() {
         stateCollectJob?.cancel()
         stateCollectJob = serviceScope.launch {
             OverlayStateManager.state.collectLatest { state ->
-                applyPassThroughFlag(state.passThroughState == PassThroughState.ENABLED)
+                val isPassThrough = state.passThroughState == PassThroughState.ENABLED
+                applyPassThroughFlag(isPassThrough)
                 updateOverlayVisibility(state.isFloatingBarVisible)
+                updateRecoveryVisibility(isPassThrough && state.isFloatingBarVisible)
                 updateNotification()
+            }
+        }
+    }
+
+    private fun updateRecoveryVisibility(isVisible: Boolean) {
+        recoveryView?.visibility = if (isVisible) View.VISIBLE else View.GONE
+        if (isVisible) {
+            recoveryLayoutParams?.let { params ->
+                val targetX = OverlayStateManager.overlayX.value.coerceIn(16, (screenWidth - 260).coerceAtLeast(50))
+                val targetY = (OverlayStateManager.overlayY.value - 60).coerceIn(40, (screenHeight - 100).coerceAtLeast(40))
+                params.x = targetX
+                params.y = targetY
+                try {
+                    recoveryView?.let { windowManager?.updateViewLayout(it, params) }
+                } catch (ignored: Exception) {
+                }
             }
         }
     }
@@ -482,12 +606,25 @@ class FloatingOverlayService : Service() {
         lifecycleOwner?.onDestroy()
         lifecycleOwner = null
 
+        recoveryLifecycleOwner?.onPause()
+        recoveryLifecycleOwner?.onStop()
+        recoveryLifecycleOwner?.onDestroy()
+        recoveryLifecycleOwner = null
+
         overlayView?.let { view ->
             try {
                 windowManager?.removeView(view)
             } catch (ignored: Exception) {
             }
             overlayView = null
+        }
+
+        recoveryView?.let { view ->
+            try {
+                windowManager?.removeView(view)
+            } catch (ignored: Exception) {
+            }
+            recoveryView = null
         }
 
         super.onDestroy()
