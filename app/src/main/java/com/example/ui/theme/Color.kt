@@ -147,14 +147,21 @@ data class DynamicUiTheme(
     val gradient: Brush,
     val cardGradient: Brush,
     val opacity: Float = 0.98f
-)
+) {
+    val brandPrimary: Color get() = primary
+    val brandDark: Color get() = primaryDark
+    val brandLight: Color get() = primaryLight
+    val brandSurface: Color get() = surface
+    val brandBorder: Color get() = surfaceBorder
+    val brandText: Color get() = accentText
+}
 
 fun resolveDynamicTheme(
     preset: com.example.model.UiColorPreset,
     customHex: Long,
     opacity: Float = 0.98f
 ): DynamicUiTheme {
-    val (primary, primaryDark, primaryLight, surface, border, text) = if (preset == com.example.model.UiColorPreset.CUSTOM) {
+    val colors = if (preset == com.example.model.UiColorPreset.CUSTOM) {
         val baseColor = Color(customHex.toULong())
         val r = baseColor.red
         val g = baseColor.green
@@ -196,6 +203,13 @@ fun resolveDynamicTheme(
             Color(preset.textHex)
         )
     }
+
+    val primary = colors[0]
+    val primaryDark = colors[1]
+    val primaryLight = colors[2]
+    val surface = colors[3]
+    val border = colors[4]
+    val text = colors[5]
 
     val primaryBright = primaryLight
     val surfaceElevated = Color(

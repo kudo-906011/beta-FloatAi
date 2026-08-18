@@ -850,8 +850,9 @@ fun SettingsScreen(
                 customHex = settings.customUiColorHex,
                 opacity = settings.overlayOpacity
             )
+            val currentFormattedHex = String.format("#%06X", (0xFFFFFFL and settings.customUiColorHex))
             var customHexInput by remember(settings.customUiColorHex) {
-                mutableStateOf(settings.customUiColorHex)
+                mutableStateOf(currentFormattedHex)
             }
 
             Column(
@@ -886,13 +887,13 @@ fun SettingsScreen(
                         ) {
                             pair.forEach { (preset, label) ->
                                 val isSelected = settings.uiColorPreset == preset
-                                val presetTheme = resolveDynamicTheme(preset, "#8B0000", 1.0f)
+                                val presetTheme = resolveDynamicTheme(preset, 0xFF7A0F16L, 1.0f)
                                 Surface(
                                     shape = RoundedCornerShape(ReplyFloatDimens.radiusLarge),
-                                    color = if (isSelected) presetTheme.brandSurface else DarkRedSurfaceCard,
+                                    color = if (isSelected) presetTheme.surface else DarkRedSurfaceCard,
                                     border = BorderStroke(
                                         if (isSelected) 1.5.dp else 1.dp,
-                                        if (isSelected) presetTheme.brandPrimary else DarkRedSurfaceBorder
+                                        if (isSelected) presetTheme.primary else DarkRedSurfaceBorder
                                     ),
                                     modifier = Modifier
                                         .weight(1f)
@@ -913,11 +914,7 @@ fun SettingsScreen(
                                             modifier = Modifier
                                                 .size(20.dp)
                                                 .clip(CircleShape)
-                                                .background(presetTheme.brandPrimary)
-                                                .then(
-                                                    if (isSelected) Modifier.background(presetTheme.brandPrimary)
-                                                    else Modifier
-                                                ),
+                                                .background(presetTheme.primary),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             if (isSelected) {
@@ -934,7 +931,7 @@ fun SettingsScreen(
                                             text = label,
                                             style = MaterialTheme.typography.bodySmall.copy(
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (isSelected) presetTheme.brandText else TextPrimary,
+                                                color = if (isSelected) presetTheme.accentText else TextPrimary,
                                                 fontSize = 11.sp
                                             ),
                                             maxLines = 1
@@ -950,10 +947,10 @@ fun SettingsScreen(
                 val isCustomSelected = settings.uiColorPreset == UiColorPreset.CUSTOM
                 Surface(
                     shape = RoundedCornerShape(ReplyFloatDimens.radiusLarge),
-                    color = if (isCustomSelected) resolvedTheme.brandSurface else DarkRedSurfaceCard,
+                    color = if (isCustomSelected) resolvedTheme.surface else DarkRedSurfaceCard,
                     border = BorderStroke(
                         if (isCustomSelected) 1.5.dp else 1.dp,
-                        if (isCustomSelected) resolvedTheme.brandPrimary else DarkRedSurfaceBorder
+                        if (isCustomSelected) resolvedTheme.primary else DarkRedSurfaceBorder
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -982,7 +979,7 @@ fun SettingsScreen(
                                     modifier = Modifier
                                         .size(24.dp)
                                         .clip(CircleShape)
-                                        .background(resolvedTheme.brandPrimary),
+                                        .background(resolvedTheme.primary),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (isCustomSelected) {
@@ -1000,7 +997,7 @@ fun SettingsScreen(
                                         text = "Custom Hex Tone",
                                         style = MaterialTheme.typography.titleSmall.copy(
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isCustomSelected) resolvedTheme.brandText else TextPrimary
+                                            color = if (isCustomSelected) resolvedTheme.accentText else TextPrimary
                                         )
                                     )
                                     Text(
@@ -1017,7 +1014,7 @@ fun SettingsScreen(
                                 selected = isCustomSelected,
                                 onClick = { onUpdateSettings { it.copy(uiColorPreset = UiColorPreset.CUSTOM) } },
                                 colors = RadioButtonDefaults.colors(
-                                    selectedColor = resolvedTheme.brandPrimary,
+                                    selectedColor = resolvedTheme.primary,
                                     unselectedColor = TextTertiary
                                 )
                             )
@@ -1034,11 +1031,18 @@ fun SettingsScreen(
                                 onValueChange = { input ->
                                     val sanitized = input.take(7)
                                     customHexInput = sanitized
-                                    if (sanitized.startsWith("#") && (sanitized.length == 7 || sanitized.length == 9)) {
-                                        onUpdateSettings { it.copy(uiColorPreset = UiColorPreset.CUSTOM, customUiColorHex = sanitized) }
-                                    } else if (!sanitized.startsWith("#") && sanitized.length == 6) {
-                                        val withHash = "#$sanitized"
-                                        onUpdateSettings { it.copy(uiColorPreset = UiColorPreset.CUSTOM, customUiColorHex = withHash) }
+                                    val clean = sanitized.removePrefix("#")
+                                    if (clean.length == 6) {
+                                        try {
+                                            val parsedLong = 0xFF000000L or clean.toLong(16)
+                                            onUpdateSettings {
+                                                it.copy(
+                                                    uiColorPreset = UiColorPreset.CUSTOM,
+                                                    customUiColorHex = parsedLong
+                                                )
+                                            }
+                                        } catch (ignored: Exception) {
+                                        }
                                     }
                                 },
                                 label = { Text("Color Hex (e.g. #FF5722)", fontSize = 11.sp) },
@@ -1047,11 +1051,11 @@ fun SettingsScreen(
                                     .weight(1f)
                                     .testTag("custom_color_hex_input"),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = resolvedTheme.brandPrimary,
+                                    focusedBorderColor = resolvedTheme.primary,
                                     unfocusedBorderColor = DarkRedSurfaceBorder,
                                     focusedTextColor = TextPrimary,
                                     unfocusedTextColor = TextPrimary,
-                                    cursorColor = resolvedTheme.brandPrimary
+                                    cursorColor = resolvedTheme.primary
                                 )
                             )
 
@@ -1059,7 +1063,7 @@ fun SettingsScreen(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(ReplyFloatDimens.radiusMedium))
-                                    .background(resolvedTheme.brandPrimary)
+                                    .background(resolvedTheme.primary)
                                     .padding(2.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -1074,42 +1078,40 @@ fun SettingsScreen(
 
                         // Quick Palette Swatches
                         val quickSwatches = listOf(
-                            "#FF1744", "#D500F9", "#2979FF", "#00E5FF",
-                            "#00E676", "#FFEA00", "#FF6D00", "#795548"
+                            0xFFFF1744L to "#FF1744",
+                            0xFFD500F9L to "#D500F9",
+                            0xFF2979FFL to "#2979FF",
+                            0xFF00E5FFL to "#00E5FF",
+                            0xFF00E676L to "#00E676",
+                            0xFFFFEA00L to "#FFEA00",
+                            0xFFFF6D00L to "#FF6D00",
+                            0xFF795548L to "#795548"
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            quickSwatches.forEach { hex ->
-                                val swatchColor = try {
-                                    Color(android.graphics.Color.parseColor(hex))
-                                } catch (e: Exception) {
-                                    BrandRed
-                                }
+                            quickSwatches.forEach { (hexLong, hexStr) ->
+                                val swatchColor = Color(hexLong)
+                                val isSwatchSelected = isCustomSelected && (settings.customUiColorHex == hexLong || (0xFFFFFFL and settings.customUiColorHex) == (0xFFFFFFL and hexLong))
                                 Box(
                                     modifier = Modifier
                                         .size(28.dp)
                                         .clip(CircleShape)
                                         .background(swatchColor)
                                         .clickable {
-                                            customHexInput = hex
+                                            customHexInput = hexStr
                                             onUpdateSettings {
                                                 it.copy(
                                                     uiColorPreset = UiColorPreset.CUSTOM,
-                                                    customUiColorHex = hex
+                                                    customUiColorHex = hexLong
                                                 )
                                             }
-                                        }
-                                        .then(
-                                            if (settings.customUiColorHex.equals(hex, ignoreCase = true) && isCustomSelected) {
-                                                Modifier.background(swatchColor)
-                                            } else Modifier
-                                        ),
+                                        },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (settings.customUiColorHex.equals(hex, ignoreCase = true) && isCustomSelected) {
+                                    if (isSwatchSelected) {
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = null,
@@ -1142,7 +1144,7 @@ fun SettingsScreen(
                             Icon(
                                 imageVector = Icons.Default.Opacity,
                                 contentDescription = null,
-                                tint = resolvedTheme.brandPrimary,
+                                tint = resolvedTheme.primary,
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
@@ -1156,14 +1158,14 @@ fun SettingsScreen(
 
                         Surface(
                             shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
-                            color = resolvedTheme.brandSurface,
-                            border = BorderStroke(0.5.dp, resolvedTheme.brandBorder)
+                            color = resolvedTheme.surface,
+                            border = BorderStroke(0.5.dp, resolvedTheme.surfaceBorder)
                         ) {
                             Text(
                                 text = "${(settings.overlayOpacity * 100).toInt()}%",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = resolvedTheme.brandText
+                                    color = resolvedTheme.accentText
                                 ),
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                             )
@@ -1186,8 +1188,8 @@ fun SettingsScreen(
                         valueRange = 0.40f..1.00f,
                         steps = 12,
                         colors = SliderDefaults.colors(
-                            thumbColor = resolvedTheme.brandPrimary,
-                            activeTrackColor = resolvedTheme.brandPrimary,
+                            thumbColor = resolvedTheme.primary,
+                            activeTrackColor = resolvedTheme.primary,
                             inactiveTrackColor = DarkRedSurfaceBorder
                         ),
                         modifier = Modifier.testTag("overlay_opacity_slider")
@@ -1202,10 +1204,10 @@ fun SettingsScreen(
                             val isOpSelected = (settings.overlayOpacity - value).let { kotlin.math.abs(it) < 0.04f }
                             Surface(
                                 shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
-                                color = if (isOpSelected) resolvedTheme.brandSurface else DarkRedSurfaceCard,
+                                color = if (isOpSelected) resolvedTheme.surface else DarkRedSurfaceCard,
                                 border = BorderStroke(
                                     1.dp,
-                                    if (isOpSelected) resolvedTheme.brandBorder else DarkRedSurfaceBorder
+                                    if (isOpSelected) resolvedTheme.surfaceBorder else DarkRedSurfaceBorder
                                 ),
                                 modifier = Modifier
                                     .weight(1f)
@@ -1223,7 +1225,7 @@ fun SettingsScreen(
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontSize = 9.sp,
                                             fontWeight = if (isOpSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isOpSelected) resolvedTheme.brandText else TextSecondary
+                                            color = if (isOpSelected) resolvedTheme.accentText else TextSecondary
                                         )
                                     )
                                 }
@@ -1262,7 +1264,7 @@ fun SettingsScreen(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
-                                color = resolvedTheme.brandPrimary,
+                                color = resolvedTheme.primary,
                                 shadowElevation = 2.dp
                             ) {
                                 Row(
@@ -1317,7 +1319,7 @@ fun SettingsScreen(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(CircleShape)
-                                            .background(resolvedTheme.brandPrimary)
+                                            .background(resolvedTheme.primary)
                                     )
                                     Text(
                                         text = "Bar 2 • Assistant Header",
@@ -1331,13 +1333,13 @@ fun SettingsScreen(
 
                                 Surface(
                                     shape = RoundedCornerShape(ReplyFloatDimens.radiusPill),
-                                    color = resolvedTheme.brandSurface,
-                                    border = BorderStroke(0.5.dp, resolvedTheme.brandBorder)
+                                    color = resolvedTheme.surface,
+                                    border = BorderStroke(0.5.dp, resolvedTheme.surfaceBorder)
                                 ) {
                                     Text(
                                         text = "Smart Reply",
                                         style = MaterialTheme.typography.labelSmall.copy(
-                                            color = resolvedTheme.brandText,
+                                            color = resolvedTheme.accentText,
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold
                                         ),
@@ -1355,8 +1357,8 @@ fun SettingsScreen(
                         onUpdateSettings {
                             it.copy(
                                 uiColorPreset = UiColorPreset.DARK_RED,
-                                customUiColorHex = "#8B0000",
-                                overlayOpacity = 1.0f
+                                customUiColorHex = 0xFF7A0F16L,
+                                overlayOpacity = 0.98f
                             )
                         }
                     },
