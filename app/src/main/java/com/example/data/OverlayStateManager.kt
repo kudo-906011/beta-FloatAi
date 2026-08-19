@@ -79,6 +79,16 @@ object OverlayStateManager {
     )
     val state: StateFlow<ReplyFloatUiState> = _state.asStateFlow()
 
+    // Ring-buffer of recent detection logs for internal diagnostics and testing
+    private val _detectionLogs = MutableStateFlow<List<com.example.model.DetectionLogEntry>>(emptyList())
+    val detectionLogs: StateFlow<List<com.example.model.DetectionLogEntry>> = _detectionLogs.asStateFlow()
+
+    fun recordDetectionLog(entry: com.example.model.DetectionLogEntry) {
+        _detectionLogs.update { current ->
+            (listOf(entry) + current).take(50)
+        }
+    }
+
     // Overlay drag coordinates (pixels relative to screen)
     val overlayX = MutableStateFlow(40)
     val overlayY = MutableStateFlow(240)

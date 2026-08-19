@@ -146,16 +146,18 @@ class DefaultAiReplyService : AiReplyService {
         val isAvailability = lower.contains("free") || lower.contains("available") || lower.contains("meet") ||
             lower.contains("sync") || lower.contains("lunch") || lower.contains("dinner") || lower.contains("coffee") ||
             lower.contains("call") || lower.contains("time")
-        val isReviewOrTask = lower.contains("review") || lower.contains("check") || lower.contains("look at") ||
-            lower.contains("status") || lower.contains("pr") || lower.contains("doc") || lower.contains("proposal") ||
-            lower.contains("update") || lower.contains("progress") || lower.contains("finish") || lower.contains("done")
+        val isProjectStatus = lower.contains("project") || (lower.contains("what happened") && lower.contains("project")) ||
+            lower.contains("status") || lower.contains("roadmap")
+        val isReviewOrTask = (lower.contains("review") || lower.contains("check") || lower.contains("look at") ||
+            lower.contains("pr") || lower.contains("doc") || lower.contains("proposal") ||
+            lower.contains("update") || lower.contains("progress") || lower.contains("finish") || lower.contains("done")) && !isProjectStatus
         val isGreeting = lower.startsWith("hey") || lower.startsWith("hi ") || lower.startsWith("hello") ||
             lower.contains("good morning") || lower.contains("good afternoon") || lower.contains("how are you") ||
             lower.contains("what's up") || lower.contains("whats up")
         val isThanks = lower.contains("thank") || lower.contains("thx") || lower.contains("appreciate") || lower.contains("grateful")
-        val isHowToOrAdvice = lower.startsWith("how to") || lower.startsWith("how do") || lower.startsWith("how can") ||
-            lower.contains("advice") || lower.contains("recommend") || lower.contains("tips") || lower.contains("youtuber") ||
-            lower.contains("channel")
+        val isYouTuber = lower.contains("youtuber") || lower.contains("youtube")
+        val isHowToOrAdvice = (lower.startsWith("how to") || lower.startsWith("how do") || lower.startsWith("how can") ||
+            lower.contains("advice") || lower.contains("recommend") || lower.contains("tips") || isYouTuber)
 
         // 4. Synthesize across tones according to responseMode
         when (responseMode) {
@@ -167,11 +169,22 @@ class DefaultAiReplyService : AiReplyService {
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Confirmed.", ReplyTone.CONCISE, mode = responseMode))
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Sure.", ReplyTone.CASUAL, mode = responseMode))
                     }
+                    isProjectStatus -> {
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "On-track.", ReplyTone.PROFESSIONAL, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Progressing!", ReplyTone.FRIENDLY, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Testing.", ReplyTone.CONCISE, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Good!", ReplyTone.CASUAL, mode = responseMode))
+                    }
                     isReviewOrTask -> {
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Reviewing.", ReplyTone.PROFESSIONAL, mode = responseMode))
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Approved.", ReplyTone.CASUAL, mode = responseMode))
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Noted.", ReplyTone.CONCISE, mode = responseMode))
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Done!", ReplyTone.FRIENDLY, mode = responseMode))
+                    }
+                    isYouTuber -> {
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Create.", ReplyTone.PROFESSIONAL, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Start!", ReplyTone.FRIENDLY, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Upload.", ReplyTone.CONCISE, mode = responseMode))
                     }
                     isGreeting -> {
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Greetings.", ReplyTone.PROFESSIONAL, mode = responseMode))
@@ -201,11 +214,23 @@ class DefaultAiReplyService : AiReplyService {
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Available. See you then.", ReplyTone.CONCISE, mode = responseMode))
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Awesome, really looking forward to connecting!", ReplyTone.FRIENDLY, mode = responseMode))
                     }
+                    isProjectStatus -> {
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "The project is currently progressing on schedule and passing final QA checks.", ReplyTone.PROFESSIONAL, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Everything is on track! We're finishing up the last tasks right now.", ReplyTone.CASUAL, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Project status: On schedule with final testing underway.", ReplyTone.CONCISE, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Great news! The project is moving ahead smoothly without blockers.", ReplyTone.FRIENDLY, mode = responseMode))
+                    }
                     isReviewOrTask -> {
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "I am reviewing the details now and will provide feedback shortly.", ReplyTone.PROFESSIONAL, mode = responseMode))
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Taking a look right now, I'll keep you posted!", ReplyTone.CASUAL, mode = responseMode))
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Under review. Feedback incoming.", ReplyTone.CONCISE, mode = responseMode))
                         suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Happy to help review this, on it right away!", ReplyTone.FRIENDLY, mode = responseMode))
+                    }
+                    isYouTuber -> {
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "To become a YouTuber, pick a clear niche, upload high-quality videos consistently, and optimize your titles.", ReplyTone.PROFESSIONAL, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Start with what you have, focus on great content, and stick to a consistent upload schedule!", ReplyTone.CASUAL, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "Define your niche, produce valuable content, and post consistently.", ReplyTone.CONCISE, mode = responseMode))
+                        suggestions.add(ReplySuggestion(UUID.randomUUID().toString(), "You can totally do it! Pick a topic you love, make engaging videos, and have fun!", ReplyTone.FRIENDLY, mode = responseMode))
                     }
                     isHowToOrAdvice -> {
                         val topic = extractKeyTopic(currentMessage)

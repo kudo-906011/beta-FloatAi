@@ -173,7 +173,8 @@ class FloatingOverlayService : Service() {
 
         val baseFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
 
         val initialFlags = if (isPassThrough) {
             baseFlags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
@@ -310,7 +311,8 @@ class FloatingOverlayService : Service() {
 
         val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
 
         val initialX = OverlayStateManager.overlayX.value.coerceIn(16, (screenWidth - 260).coerceAtLeast(50))
         val initialY = (OverlayStateManager.overlayY.value - 60).coerceIn(40, (screenHeight - 100).coerceAtLeast(40))
@@ -475,7 +477,8 @@ class FloatingOverlayService : Service() {
 
         val baseFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
 
         val newFlags = if (isPassThrough) {
             baseFlags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE

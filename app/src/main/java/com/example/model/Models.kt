@@ -285,3 +285,21 @@ sealed class AiResultState {
     data class NoMessage(val reason: String = "No relevant message detected") : AiResultState()
     data class Error(val generationId: String, val message: String) : AiResultState()
 }
+
+/**
+ * Structured debug log for tracking candidate question detection,
+ * classification decisions, deduplication, and AI dispatch pipeline.
+ */
+data class DetectionLogEntry(
+    val timestamp: Long = System.currentTimeMillis(),
+    val candidateText: String,
+    val sourceApp: String,
+    val packageName: String,
+    val isNew: Boolean,
+    val isConversational: Boolean,
+    val isQuestionOrRequest: Boolean,
+    val rejectionReason: String? = null,
+    val aiProcessed: Boolean,
+    val confidence: Float = 0.0f
+)
+

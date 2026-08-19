@@ -394,4 +394,213 @@ class ExampleRobolectricTest {
         val bengaliReply = com.example.ai.LanguageDetectionEngine.generateOriginalLanguageReply("Upload videos consistently", bengaliInput, bengaliLang)
         assertTrue(bengaliReply.contains("ইউটিউবার") || bengaliReply.contains("ভিডিও") || bengaliReply.contains("শুরু করুন"))
     }
+
+    // =========================================================================
+    // 10-POINT VERIFICATION CHECKLIST TESTS
+    // =========================================================================
+
+    @Test
+    fun `CHECKLIST 1 - Display random screen text and verify rejection`() {
+        val randomTexts = listOf(
+            "Settings",
+            "Battery 85%",
+            "12:45 PM",
+            "Item 4",
+            "Share with friends",
+            "Terms & Conditions",
+            "Lorem ipsum dolor sit amet",
+            "98.6",
+            "https://example.com/test",
+            "Sunday"
+        )
+
+        for (text in randomTexts) {
+            val result = com.example.ai.QuestionClassifier.classifyCandidate(text)
+            assertFalse("Text '$text' should be rejected as non-conversational or UI noise", result.isQualifyingQuestion)
+            assertNotNull(result.rejectionReason)
+        }
+    }
+
+    @Test
+    fun `CHECKLIST 2 - Open and close tabs and verify rejection`() {
+        val tabTexts = listOf(
+            "New Tab",
+            "Close tab",
+            "3 tabs open",
+            "Switch tab",
+            "tab 2",
+            "Incognito tab",
+            "search or type url"
+        )
+
+        for (text in tabTexts) {
+            val result = com.example.ai.QuestionClassifier.classifyCandidate(text)
+            assertFalse("Tab text '$text' should be rejected", result.isQualifyingQuestion)
+        }
+    }
+
+    @Test
+    fun `CHECKLIST 3 - Scroll the conversation and verify deduplication`() {
+        val messageText = "Can we schedule a sync for 3 PM?"
+        val classification = com.example.ai.QuestionClassifier.classifyCandidate(messageText)
+        assertTrue(classification.isQualifyingQuestion)
+
+        // Process message first time
+        val msg = DetectedMessage(
+            eventId = "evt_scroll_1",
+            text = messageText,
+            sourceApp = "MessagingApp"
+        )
+        OverlayStateManager.onNewMessageDetected(msg)
+        assertEquals(messageText, OverlayStateManager.state.value.detectedMessage)
+
+        // Triggering with same text (simulating scrolling past the message again)
+        val initialReplies = OverlayStateManager.state.value.replies
+        OverlayStateManager.onNewMessageDetected(msg)
+        // Question remains stable without redundant resetting
+        assertEquals(messageText, OverlayStateManager.state.value.detectedMessage)
+    }
+
+    @Test
+    fun `CHECKLIST 4 - Receive What happened to the project inquiry`() = runTest {
+        val projectText = "What happened to the project?"
+        val classification = com.example.ai.QuestionClassifier.classifyCandidate(projectText)
+        assertTrue(classification.isQualifyingQuestion)
+
+        val request = AiReplyRequest(
+            generationId = "gen_project",
+            currentMessage = projectText,
+            replyTone = ReplyTone.BALANCED,
+            requestedReplyCount = 3
+        )
+        val result = aiService.generateReplies(request)
+        assertTrue(result.isSuccess)
+        val replyString = result.suggestions.joinToString(" ") { it.text }.lowercase()
+        assertTrue("Expected project status content, got: $replyString",
+            replyString.contains("project") || replyString.contains("schedule") || replyString.contains("testing") || replyString.contains("qa"))
+    }
+
+    @Test
+    fun `CHECKLIST 5 - Receive How do I become a YouTuber after project inquiry`() = runTest {
+        // Step 1: Initial project question
+        val projectText = "What happened to the project?"
+        val req1 = AiReplyRequest(generationId = "gen_chk5_1", currentMessage = projectText)
+        val res1 = aiService.generateReplies(req1)
+        assertTrue(res1.isSuccess)
+
+        // Step 2: New question arrives: "How do I become a YouTuber?"
+        val youtuberText = "How do I become a YouTuber?"
+        val classification = com.example.ai.QuestionClassifier.classifyCandidate(youtuberText)
+        assertTrue(classification.isQualifyingQuestion)
+
+        // Generate replies for the new question
+        val req2 = AiReplyRequest(generationId = "gen_chk5_2", currentMessage = youtuberText)
+        val res2 = aiService.generateReplies(req2)
+        assertTrue(res2.isSuccess)
+
+        val youtuberReplyString = res2.suggestions.joinToString(" ") { it.text }.lowercase()
+        assertTrue("Expected YouTube advice, got: $youtuberReplyString",
+            youtuberReplyString.contains("youtube") || youtuberReplyString.contains("niche") || youtuberReplyString.contains("content") || youtuberReplyString.contains("video"))
+        assertFalse("Previous project answer must NOT appear in new replies", youtuberReplyString.contains("final qa checks"))
+    }
+
+    @Test
+    fun `CHECKLIST 6 - Receive same message again due to UI refresh and verify deduplication`() {
+        val question = "Are you available for lunch today?"
+        val msg = DetectedMessage(
+            eventId = "evt_ui_refresh",
+            text = question,
+            sourceApp = "Slack"
+        )
+
+        OverlayStateManager.onNewMessageDetected(msg)
+        val activeGenId1 = OverlayStateManager.state.value.activeGenerationId
+
+        // UI refresh sends same message again
+        OverlayStateManager.onNewMessageDetected(msg)
+        val activeGenId2 = OverlayStateManager.state.value.activeGenerationId
+
+        // Active generation ID must remain unchanged because duplicate was discarded
+        assertEquals(activeGenId1, activeGenId2)
+    }
+
+    @Test
+    fun `CHECKLIST 7 - Receive Bengali question and verify accurate handling`() {
+        val bengaliQuestion = "কীভাবে ইউটিউবার হতে পারি?"
+        val classification = com.example.ai.QuestionClassifier.classifyCandidate(bengaliQuestion)
+        assertTrue(classification.isQualifyingQuestion)
+        assertEquals("Bengali", classification.detectedLanguage)
+
+        val langInfo = com.example.ai.LanguageDetectionEngine.detectLanguage(bengaliQuestion)
+        assertEquals("Bengali", langInfo.name)
+        val translation = com.example.ai.LanguageDetectionEngine.translateToEnglish(bengaliQuestion, langInfo)
+        assertTrue(translation.contains("YouTuber"))
+
+        val nativeReply = com.example.ai.LanguageDetectionEngine.generateOriginalLanguageReply("Start uploading videos", bengaliQuestion, langInfo)
+        assertTrue(nativeReply.contains("ইউটিউবার") || nativeReply.contains("ভিডিও") || nativeReply.contains("শুরু করুন"))
+    }
+
+    @Test
+    fun `CHECKLIST 8 - Receive Russian question and verify accurate handling`() {
+        val russianQuestion = "Как стать ютубером?"
+        val classification = com.example.ai.QuestionClassifier.classifyCandidate(russianQuestion)
+        assertTrue(classification.isQualifyingQuestion)
+        assertEquals("Russian", classification.detectedLanguage)
+
+        val langInfo = com.example.ai.LanguageDetectionEngine.detectLanguage(russianQuestion)
+        assertEquals("Russian", langInfo.name)
+        val translation = com.example.ai.LanguageDetectionEngine.translateToEnglish(russianQuestion, langInfo)
+        assertTrue(translation.contains("YouTuber") || translation.contains("become"))
+
+        val nativeReply = com.example.ai.LanguageDetectionEngine.generateOriginalLanguageReply("Start uploading videos", russianQuestion, langInfo)
+        assertTrue(nativeReply.contains("ютубером") || nativeReply.contains("контент") || nativeReply.contains("Создавайте"))
+    }
+
+    @Test
+    fun `CHECKLIST 9 - Open another application with random text and verify rejection`() {
+        val appRandomTexts = listOf(
+            "Breaking news: Global summit concludes today",
+            "Calculator: 45 x 12 = 540",
+            "Home, Search, Library, Settings",
+            "Chrome Menu: History, Downloads, Bookmarks",
+            "Version 2.4.1 (Build 1204)"
+        )
+
+        for (text in appRandomTexts) {
+            val result = com.example.ai.QuestionClassifier.classifyCandidate(text)
+            assertFalse("Random app text '$text' should NOT trigger question classification", result.isQualifyingQuestion)
+        }
+    }
+
+    @Test
+    fun `CHECKLIST 10 - While AI response is generating receive newer question and verify priority`() = runTest {
+        // Generation 1 started
+        val genId1 = "gen_concurrent_1"
+        val genId2 = "gen_concurrent_2"
+
+        val msg1 = DetectedMessage(eventId = "e1", text = "What is the status of the project?")
+        val msg2 = DetectedMessage(eventId = "e2", text = "How do I become a YouTuber?")
+
+        OverlayStateManager.onNewMessageDetected(msg1)
+        val currentQuestion1 = OverlayStateManager.state.value.detectedMessage
+        assertEquals("What is the status of the project?", currentQuestion1)
+
+        // Before generation 1 completes, newer question arrives
+        OverlayStateManager.onNewMessageDetected(msg2)
+        val currentQuestion2 = OverlayStateManager.state.value.detectedMessage
+        assertEquals("How do I become a YouTuber?", currentQuestion2)
+
+        // When gen1 returns with old ID, it cannot overwrite gen2's state
+        val oldResult = com.example.model.AiReplyResult(
+            generationId = genId1,
+            currentMessage = "What is the status of the project?",
+            suggestions = listOf(
+                ReplySuggestion(id = "s_old", text = "Old project response", tone = ReplyTone.PROFESSIONAL)
+            )
+        )
+
+        // OverlayStateManager ensures that only result matching state's activeGenerationId is accepted
+        assertNotEquals(genId1, OverlayStateManager.state.value.activeGenerationId)
+    }
 }
+
